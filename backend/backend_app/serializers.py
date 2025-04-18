@@ -1,10 +1,15 @@
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import EmailOTP, UserCafe, Floor, Camera
+from .models import (
+    EmailOTP, UserCafe, Floor, Camera, SeatDetection
+)
 
 User = get_user_model()
 
+# =====================================================
+# === AUTHENTICATION & USER SERIALIZERS
+# =====================================================
 
 class UserSerializer(serializers.ModelSerializer):
     passwordConfirm = serializers.CharField(write_only=True)
@@ -22,11 +27,9 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('passwordConfirm')
         user = User(**validated_data)
-        user.set_password(validated_data['password'])  # ✅ This hashes it!
+        user.set_password(validated_data['password'])
         user.save()
         return user
-
-    
 
 
 class UserListSerializer(serializers.ModelSerializer):
@@ -65,6 +68,12 @@ class LoginSerializer(serializers.Serializer):
         }
 
 
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+# =====================================================
+# === OTP & PASSWORD RESET
+# =====================================================
 
 class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -74,13 +83,6 @@ class ResetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError("Email not found")
         return value
 
-
-
-from rest_framework import serializers
-from .models import EmailOTP
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
 
 class ValidateOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -93,7 +95,7 @@ class ValidateOTPSerializer(serializers.Serializer):
             record = EmailOTP.objects.filter(
                 email=email,
                 code=otp,
-                purpose='signup'  # <-- make sure it's for signup
+                purpose='signup'
             ).latest("created_at")
 
             if record.is_expired():
@@ -103,7 +105,6 @@ class ValidateOTPSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid OTP")
 
         return data
-
 
 
 class SetNewPasswordSerializer(serializers.Serializer):
@@ -121,15 +122,15 @@ class SetNewPasswordSerializer(serializers.Serializer):
         user.save()
         return user
 
-
-class LogoutSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
+# =====================================================
+# === CAFE, FLOOR, CAMERA, SEAT DETECTION
+# =====================================================
 
 class UserCafeSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserCafe
         fields = ["id", "name", "location", "capacity", "user"]
-        extra_kwargs = {'user': {'read_only': True}}  # 🔒 this line makes it safe
+        extra_kwargs = {'user': {'read_only': True}}
 
 
 class FloorSerializer(serializers.ModelSerializer):
@@ -138,7 +139,6 @@ class FloorSerializer(serializers.ModelSerializer):
         fields = ['id', 'cafe', 'floor_number', 'name']
 
 
-# serializers.py
 class CameraSerializer(serializers.ModelSerializer):
     class Meta:
         model = Camera
@@ -151,12 +151,13 @@ class CameraSerializer(serializers.ModelSerializer):
             "channel",
             "location",
             "admin_name",
-            "admin_password"
+            "admin_password",
+            "last_active",
         ]
+        extra_kwargs = {
+            "admin_password": {"write_only": True}
+        }
 
-from rest_framework import serializers
-from .models import SeatDetection
-from datetime import datetime
 
 class SeatDetectionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -164,7 +165,6 @@ class SeatDetectionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def validate(self, data):
-        # Auto-calculate the month from time_start
         if data.get("time_start"):
             data["month"] = data["time_start"].date().replace(day=1)
         return data

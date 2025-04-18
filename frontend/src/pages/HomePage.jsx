@@ -14,6 +14,10 @@ function HomePage() {
     navigate('/analytics/seats');
   };
 
+  const handleGoToManageCamera = () => {
+    navigate('/settings/manage-camera');
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white text-[#262626] space-y-6">
       <h1 className="text-3xl font-bold">Welcome 🎉</h1>
@@ -25,6 +29,14 @@ function HomePage() {
       >
         Go to Seat Analytics
       </button>
+
+      <button
+        onClick={handleGoToManageCamera}
+        className="bg-blue-600 px-4 py-2 text-white rounded hover:bg-blue-700 font-semibold"
+      >
+        Go to Camera Management
+      </button>
+
 
       <button
         onClick={handleLogout}

@@ -7,6 +7,7 @@ import OnboardingPage from './pages/OnboardingPage';
 import HomePage from './pages/HomePage';
 import AnalyticsPage from './pages/AnalyticsPage'; // ✅ Add this import
 import ProtectedRoute from './components/ProtectedRoute';
+import ManageCameras from './pages/ManageCamera'; // ✅ Add this import
 
 function App() {
   return (
@@ -42,6 +43,15 @@ function App() {
           element={
             <ProtectedRoute>
               <AnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* ✅ Manage Camera */}
+        <Route
+          path="/settings/manage-camera"
+          element={
+            <ProtectedRoute>
+              <ManageCameras />
             </ProtectedRoute>
           }
         />
