@@ -8,7 +8,7 @@ from .views import (
     UserListView, UserDetailView,
 
     # 📹 Cameras & Cafe
-    UserCafeCreateView, FloorCreateView, CameraCreateView, CameraListView, CameraDetailView,
+    UserCafeCreateView, FloorCreateView, FloorListView, CameraCreateView, CameraListView, CameraDetailView,
 
     # 🪑 Seat & Analytics
     get_seat_occupancy, record_seat_detection, seat_summary_analytics, current_occupied_seats,
@@ -34,6 +34,7 @@ urlpatterns = [
     # --- Cafe & Floor ---
     path('cafes/', UserCafeCreateView.as_view(), name='create-cafe'),
     path('floors/', FloorCreateView.as_view(), name='create-floor'),
+    path('floors/list/', FloorListView.as_view(), name='create-floor'),
 
     # --- Camera Management ---
     path('cameras/', CameraCreateView.as_view(), name='create-camera'),

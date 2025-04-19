@@ -134,9 +134,23 @@ class UserCafeSerializer(serializers.ModelSerializer):
 
 
 class FloorSerializer(serializers.ModelSerializer):
+    camera_ids = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True, required=False, allow_empty=True, default=list
+    )
+
     class Meta:
         model = Floor
-        fields = ['id', 'cafe', 'floor_number', 'name']
+        fields = ['id', 'cafe', 'floor_number', 'name', 'camera_ids']
+        extra_kwargs = {'cafe': {'read_only': True}}
+
+    def create(self, validated_data):
+        camera_ids = validated_data.pop('camera_ids', [])
+        floor = Floor.objects.create(**validated_data)
+
+        if camera_ids:
+            Camera.objects.filter(id__in=camera_ids).update(floor=floor)
+
+        return floor
 
 
 class CameraSerializer(serializers.ModelSerializer):

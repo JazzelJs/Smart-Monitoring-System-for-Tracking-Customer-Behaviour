@@ -119,6 +119,19 @@ class FloorCreateView(generics.CreateAPIView):
     serializer_class = FloorSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def perform_create(self, serializer):
+        user_cafe = UserCafe.objects.filter(user=self.request.user).first()
+        serializer.save(cafe=user_cafe)
+
+class FloorListView(generics.ListAPIView):
+    serializer_class = FloorSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Floor.objects.filter(cafe__user=self.request.user)
+
+
+
 class CameraListView(generics.ListAPIView):
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]
