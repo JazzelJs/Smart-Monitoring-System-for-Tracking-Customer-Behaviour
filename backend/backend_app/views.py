@@ -144,6 +144,9 @@ class CameraCreateView(generics.CreateAPIView):
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_context(self):
+        return {"request": self.request}  # ✅ required for auto-assigning `cafe`
+
 class CameraDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]

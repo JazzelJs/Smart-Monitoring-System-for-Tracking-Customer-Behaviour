@@ -48,17 +48,21 @@ const AddCameraModal = ({ form, setForm, onSubmit, onCancel, floors, isEdit }) =
           <div>
             <label className="block text-sm font-medium">Floor</label>
             <select
-              value={form.floor}
-              onChange={(e) => setForm({ ...form, floor: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded"
-            >
-              <option value="">Select a floor</option>
-              {floors.map((floor) => (
-                <option key={floor.id} value={floor.id}>
-                  {floor.name}
-                </option>
-              ))}
-            </select>
+  value={form.floor || ""}
+  onChange={(e) =>
+    setForm({ ...form, floor: parseInt(e.target.value) || null })
+  }
+  className="w-full px-3 py-2 border border-gray-300 rounded"
+>
+  <option value="">Select a floor</option>
+  {floors.map((floor) => (
+    <option key={floor.id} value={floor.id}>
+      {floor.name || `Floor ${floor.floor_number}`}
+    </option>
+  ))}
+</select>
+
+
           </div>
 
           <div>

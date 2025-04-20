@@ -169,8 +169,19 @@ class CameraSerializer(serializers.ModelSerializer):
             "last_active",
         ]
         extra_kwargs = {
+            "cafe": {"read_only": True},
             "admin_password": {"write_only": True}
         }
+
+    def create(self, validated_data):
+        floor = validated_data.get("floor")
+
+        if not floor:
+            raise serializers.ValidationError({"floor": "Floor is required."})
+
+        validated_data["cafe"] = floor.cafe  # ✅ assign cafe from floor
+        return super().create(validated_data)
+
 
 
 class SeatDetectionSerializer(serializers.ModelSerializer):

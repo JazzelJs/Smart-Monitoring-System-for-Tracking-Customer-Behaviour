@@ -7,24 +7,26 @@ const ManageCameras = () => {
   const [cameras, setCameras] = useState([]);
   const [loading, setLoading] = useState(true);
   const [floors, setFloors] = useState([]);
+  const [dropdownPos, setDropdownPos] = useState({ x: 0, y: 0 });
+  const [dropdownOpenId, setDropdownOpenId] = useState(null);
 
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraForm, setCameraForm] = useState({
     location: "",
     ip_address: "",
     channel: "554",
-    floor: "",
+    floor: null,
     status: "active",
     admin_name: "",
     admin_password: ""
   });
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [dropdownOpenId, setDropdownOpenId] = useState(null);
 
   const [showFloorModal, setShowFloorModal] = useState(false);
   const [floorForm, setFloorForm] = useState({
     name: "",
+    floor_number: null,
     camera_ids: []
   });
 
@@ -55,9 +57,18 @@ const ManageCameras = () => {
 
   const handleCreateCamera = async () => {
     try {
+      console.log("Submitting cameraForm:", cameraForm);
       await api.post("/cameras/", cameraForm);
       setShowCameraModal(false);
-      setCameraForm({ location: "", ip_address: "", channel: "554", floor: "", status: "active", admin_name: "", admin_password: "" });
+      setCameraForm({
+        location: "",
+        ip_address: "",
+        channel: "554",
+        floor: null,
+        status: "active",
+        admin_name: "",
+        admin_password: ""
+      });
       fetchCameras();
     } catch (err) {
       console.error("Error creating camera", err.response?.data || err);
@@ -70,7 +81,15 @@ const ManageCameras = () => {
       setShowCameraModal(false);
       setIsEditing(false);
       setEditId(null);
-      setCameraForm({ location: "", ip_address: "", channel: "554", floor: "", status: "active", admin_name: "", admin_password: "" });
+      setCameraForm({
+        location: "",
+        ip_address: "",
+        channel: "554",
+        floor: null,
+        status: "active",
+        admin_name: "",
+        admin_password: ""
+      });
       fetchCameras();
     } catch (err) {
       console.error("Error updating camera", err.response?.data || err);
@@ -106,12 +125,25 @@ const ManageCameras = () => {
     try {
       await api.post("/floors/", floorForm);
       setShowFloorModal(false);
-      setFloorForm({ name: "", camera_ids: [] });
+      setFloorForm({ name: "", floor_number: null, camera_ids: [] });
       fetchFloors();
     } catch (err) {
       console.error("Error creating floor", err.response?.data || err);
     }
   };
+
+  // ✅ Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      const isInsideDropdown = e.target.closest(".dropdown-menu");
+      const isDropdownBtn = e.target.closest("button");
+      if (!isInsideDropdown && !isDropdownBtn) {
+        setDropdownOpenId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <div className="p-6">
@@ -122,13 +154,25 @@ const ManageCameras = () => {
         </div>
         <div className="space-x-2">
           <button onClick={() => setShowFloorModal(true)} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">+ Add Floor</button>
-          <button onClick={() => { setShowCameraModal(true); setIsEditing(false); setCameraForm({ location: "", ip_address: "", channel: "554", floor: "", status: "active", admin_name: "", admin_password: "" }); }} className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800">+ Add Camera</button>
+          <button onClick={() => {
+            setShowCameraModal(true);
+            setIsEditing(false);
+            setCameraForm({
+              location: "",
+              ip_address: "",
+              channel: "554",
+              floor: null,
+              status: "active",
+              admin_name: "",
+              admin_password: ""
+            });
+          }} className="bg-black text-white px-4 py-2 rounded hover:bg-gray-800">+ Add Camera</button>
         </div>
       </div>
 
       {loading ? <p>Loading...</p> : (
         <div className="overflow-x-auto">
-          <table className="min-w-full bg-white border rounded-lg text-sm">
+          <table className="min-w-full bg-white border rounded-lg text-sm text-left">
             <thead>
               <tr className="bg-gray-100">
                 <th className="px-4 py-2">Camera ID</th>
@@ -142,21 +186,34 @@ const ManageCameras = () => {
             <tbody>
               {cameras.map((cam) => (
                 <tr key={cam.id} className="border-t">
-                  <td className="px-4 py-2">Cam {cam.id}</td>
-                  <td className="px-4 py-2">{cam.location || "N/A"}</td>
-                  <td className="px-4 py-2">{cam.ip_address}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 whitespace-nowrap">Cam {cam.id}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{cam.location || "N/A"}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{cam.ip_address}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs rounded-full font-semibold ${cam.status === "active" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
                       {cam.status}
                     </span>
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 whitespace-nowrap">
                     {cam.last_active ? new Date(cam.last_active).toLocaleTimeString() : "N/A"}
                   </td>
-                  <td className="px-4 py-2 relative">
-                    <button onClick={() => setDropdownOpenId(dropdownOpenId === cam.id ? null : cam.id)} className="text-gray-500 hover:text-black">⋮</button>
+                  <td className="px-4 py-2 relative whitespace-nowrap">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setDropdownPos({ x: rect.right - 128, y: rect.bottom + window.scrollY });
+                        setDropdownOpenId(dropdownOpenId === cam.id ? null : cam.id);
+                      }}
+                      className="text-gray-500 hover:text-black"
+                    >
+                      ⋮
+                    </button>
                     {dropdownOpenId === cam.id && (
-                      <div className="absolute z-10 right-0 mt-2 bg-white border shadow-md rounded w-28">
+                      <div
+                        className="fixed z-50 w-32 bg-white border border-gray-200 rounded shadow-md dropdown-menu"
+                        style={{ top: `${dropdownPos.y}px`, left: `${dropdownPos.x}px` }}
+                      >
                         <button onClick={() => handleOpenEdit(cam)} className="block w-full px-4 py-2 text-left hover:bg-gray-100">Edit</button>
                         <button onClick={() => handleDeleteCamera(cam.id)} className="block w-full px-4 py-2 text-left hover:bg-gray-100 text-red-600">Delete</button>
                       </div>
