@@ -57,7 +57,6 @@ const ManageCameras = () => {
 
   const handleCreateCamera = async () => {
     try {
-      console.log("Submitting cameraForm:", cameraForm);
       await api.post("/cameras/", cameraForm);
       setShowCameraModal(false);
       setCameraForm({
