@@ -8,15 +8,21 @@ import django
 import os
 import sys
 from datetime import datetime
+from django.utils.timezone import make_aware
 import backend_app.shared_video as shared_video
-
-
 
 # === Django setup ===
 sys.path.append("D:/Kuliah/Tugas Akhir/TheTugasFinal/backend")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
 django.setup()
-from backend_app.models import EntryEvent
+from backend_app.models import EntryEvent, SeatDetection, Camera
+
+CAMERA_ID = 11
+try:
+    selected_camera = Camera.objects.get(id=CAMERA_ID)
+except Camera.DoesNotExist:
+    print(f"[ERROR] Camera with ID {CAMERA_ID} not found.")
+    selected_camera = None
 
 # === Thread Control ===
 detection_thread = None
@@ -29,10 +35,13 @@ model = YOLO("D:/Kuliah/Tugas Akhir/TheTugasFinal/models/detection_models/best.p
 # === Parameters ===
 CONFIDENCE_THRESHOLD = 0.2
 IOU_OCCUPIED_THRESHOLD = 0.5
-OCCUPANCY_TIME_THRESHOLD = 10.0
+OCCUPANCY_TIME_THRESHOLD = 40
 COOLDOWN_FRAME_THRESHOLD = 5
 PROXIMITY_PADDING = 20
-line_pts = [(1690, 864), (1164, 1018)]  # entry/exit line
+line_pts = [(1690, 864), (1164, 1018)]
+
+active_detections = {}
+selected_camera = Camera.objects.first()  # Update this if using dynamic camera assignment
 
 # === Utility Functions ===
 def calculate_iou(boxA, boxB):
@@ -69,17 +78,14 @@ def get_side_of_line(p1, p2, point):
 
 # === Detection Logic ===
 def run_detection():
-    global running
-    print("[YOLO] Detection thread started")
+    global running, active_detections
     running = True
-
     cap = cv2.VideoCapture("D:/Kuliah/Tugas Akhir/Coding Udemy/Testing Faces/cctv_vids/vid1.mp4")
     frame_count = 0
     registered_chairs = {}
     person_memory = {}
     next_chair_id = 0
 
-    # Load cached chairs
     cached = redis_client.get("cached_chair_positions")
     if cached:
         try:
@@ -96,13 +102,12 @@ def run_detection():
         except:
             pass
 
-    while running:
-        ret, frame = cap.read()
-        print(f"[DEBUG] Frame read: {ret}")
+    while True:
         if not running:
-            print("[YOLO] Stopping loop mid-frame")
+            print("[YOLO] Stop signal received, exiting detection loop.")
             break
 
+        ret, frame = cap.read()
         if not ret:
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
@@ -128,45 +133,28 @@ def run_detection():
                             'cooldown': 0
                         }
                         next_chair_id += 1
-
                 elif cls_id == 2 and conf >= CONFIDENCE_THRESHOLD and box.id is not None:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     track_id = int(box.id[0])
                     detected_persons.append((x1, y1, x2, y2))
-
-                    # Entry/Exit detection
                     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                     current_side = get_side_of_line(line_pts[0], line_pts[1], (cx, cy))
                     prev_side = person_memory.get(track_id)
-
                     if prev_side is not None:
                         if prev_side < 0 and current_side >= 0:
                             EntryEvent.objects.create(event_type="enter", track_id=track_id)
-                            redis_client.set("entry_state", json.dumps({
-                                "last_event": "enter", "track_id": track_id, "timestamp": timestamp_iso
-                            }))
                         elif prev_side > 0 and current_side <= 0:
                             EntryEvent.objects.create(event_type="exit", track_id=track_id)
-                            redis_client.set("entry_state", json.dumps({
-                                "last_event": "exit", "track_id": track_id, "timestamp": timestamp_iso
-                            }))
                     person_memory[track_id] = current_side
 
-        # === Chair Occupancy Detection ===
         for chair_id, state in registered_chairs.items():
             chair_box = state['box']
             seated = False
-
             for person_box in detected_persons:
-                iou = calculate_iou(chair_box, person_box)
-                center_hit = is_center_inside(person_box, chair_box)
-                vertical_check = is_vertically_aligned(chair_box, person_box)
-                proximity_hit = is_person_near_chair(person_box, chair_box)
-
-                if (center_hit or proximity_hit) and vertical_check:
+                if (is_center_inside(person_box, chair_box) or is_person_near_chair(person_box, chair_box)) and is_vertically_aligned(chair_box, person_box):
                     seated = True
                     break
-                elif iou > IOU_OCCUPIED_THRESHOLD and vertical_check:
+                elif calculate_iou(chair_box, person_box) > IOU_OCCUPIED_THRESHOLD and is_vertically_aligned(chair_box, person_box):
                     seated = True
                     break
 
@@ -176,24 +164,34 @@ def run_detection():
                     state['start_time'] = current_time
                 elif not state['occupied'] and (current_time - state['start_time']) >= OCCUPANCY_TIME_THRESHOLD:
                     state['occupied'] = True
+                    detection = SeatDetection.objects.create(
+                        camera=selected_camera,
+                        chair_id=chair_id,
+                        time_start=make_aware(datetime.utcfromtimestamp(state['start_time']))
+                    )
+                    active_detections[chair_id] = detection
             else:
                 state['cooldown'] += 1
                 if state['cooldown'] >= COOLDOWN_FRAME_THRESHOLD:
+                    if state['occupied']:
+                        detection = active_detections.get(chair_id)
+                        if detection:
+                            detection.time_end = make_aware(datetime.utcfromtimestamp(current_time))
+                            detection.save()
+                            del active_detections[chair_id]
                     state['start_time'] = None
                     state['occupied'] = False
 
-        # === Update Redis ===
-        chair_data = {
+        redis_client.set("chair_occupancy", json.dumps({
             "chairs": {
                 str(chair_id): {
                     "status": "occupied" if state["occupied"] else "available",
-                    "box": list(state["box"])
-                }
-                for chair_id, state in registered_chairs.items()
+                    "box": list(state["box"]),
+                    "start_time": state.get("start_time")
+                } for chair_id, state in registered_chairs.items()
             },
             "timestamp": current_time
-        }
-        redis_client.set("chair_occupancy", json.dumps(chair_data))
+        }))
 
         # === Draw Output ===
         resized_frame = cv2.resize(frame, (640, 480))
@@ -230,45 +228,25 @@ def run_detection():
             cv2.rectangle(resized_frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(resized_frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
 
-        
         with shared_video.video_lock:
-            shared_video.latest_frame = resized_frame.copy() 
-            print("[DEBUG] latest_frame UPDATED")
-        print(f"[YOLO] Frame {frame_count} processed.")
+            shared_video.latest_frame = resized_frame.copy()
         time.sleep(1)
 
-    # Cache before shutdown
-    cache_to_save = {
-        "registered_chairs": {
-            str(cid): {
-                "box": list(state["box"]),
-                "occupied": state["occupied"],
-                "start_time": state["start_time"],
-                "cooldown": state["cooldown"]
-            }
-            for cid, state in registered_chairs.items()
-        },
-        "next_chair_id": next_chair_id
-    }
-    redis_client.set("cached_chair_positions", json.dumps(cache_to_save))
     cap.release()
-
     print("[YOLO] Detection loop stopped cleanly.")
-
 
 # === Control Functions ===
 def start_detection():
     global detection_thread, running
     if detection_thread is None or not detection_thread.is_alive():
-        print("[YOLO] Starting new detection thread.")
         detection_thread = threading.Thread(target=run_detection, daemon=True)
         detection_thread.start()
         return True
-    print("[YOLO] Detection already running.")
     return False
 
 def stop_detection():
-    global running
-    print("[YOLO] Stop signal received.")
+    global running, detection_thread
     running = False
+    if detection_thread and detection_thread.is_alive():
+        detection_thread.join(timeout=5)
     return True

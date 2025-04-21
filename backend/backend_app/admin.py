@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, UserCafe, Camera, Seat, Report, Customer, SeatDetection, EmailOTP, Floor
+from .models import User, UserCafe, Camera, Seat, Report, Customer, SeatDetection, EmailOTP, Floor, ActivityLog, EntryEvent
 
 # If you use a custom User model:
 class UserAdmin(BaseUserAdmin):
@@ -29,5 +29,7 @@ admin.site.register(Customer)
 admin.site.register(SeatDetection)
 admin.site.register(EmailOTP)
 admin.site.register(Floor)
+admin.site.register(ActivityLog)
+admin.site.register(EntryEvent)
 
 # Register your models here.

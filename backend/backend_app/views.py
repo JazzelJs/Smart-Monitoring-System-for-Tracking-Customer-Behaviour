@@ -8,7 +8,9 @@ from django.utils.timezone import now
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
-from django.db.models import Count, Avg
+from django.db.models import Count, Avg, F, ExpressionWrapper, DurationField
+
+
 
 from datetime import timedelta
 import redis, json, subprocess, os, time, cv2
@@ -168,27 +170,49 @@ class EntryEventListCreateView(generics.ListCreateAPIView):
     queryset = EntryEvent.objects.all()
     serializer_class = entry_event_serializer
 
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def seat_summary_analytics(request):
     user = request.user
     month_start = now().replace(day=1)
-    cafes = UserCafe.objects.filter(user=user)
-    seats = Seat.objects.filter(cafe__in=cafes)
-    detections = SeatDetection.objects.filter(seat__in=seats, month__gte=month_start)
 
-    popular = detections.values("seat__seat_id").annotate(count=Count("id")).order_by("-count").first()
-    avg_duration = detections.aggregate(avg=Avg("duration"))["avg"]
-    longest = detections.order_by("-duration").first()
+    cafes = UserCafe.objects.filter(user=user)
+    cameras = Camera.objects.filter(cafe__in=cafes)
+
+    detections = SeatDetection.objects.filter(
+        camera__in=cameras,
+        time_start__gte=month_start
+    )
+
+    # Most popular seat
+    popular = detections.values("chair_id").annotate(
+        count=Count("id")
+    ).order_by("-count").first()
+
+    # Average duration
+    avg_duration = detections.exclude(time_end__isnull=True).aggregate(
+        avg=Avg(F("time_end") - F("time_start"))
+    )["avg"]
+
+    # Longest completed session
+    annotated = detections.exclude(time_end__isnull=True).annotate(
+        duration=ExpressionWrapper(F("time_end") - F("time_start"), output_field=DurationField())
+    )
+    longest = annotated.order_by("-duration").first()
+
+    # Longest ongoing session
+    ongoing = detections.filter(time_end__isnull=True).annotate(
+        current_duration=ExpressionWrapper(now() - F("time_start"), output_field=DurationField())
+    ).order_by("-current_duration").first()
 
     return Response({
-        "most_popular_seat": f"Table {popular['seat__seat_id']}" if popular else None,
-        "average_duration": round(avg_duration / 60) if avg_duration else 0,
-        "longest_session_table": f"Table {longest.seat.seat_id}" if longest else None,
-        "longest_session_duration": round(longest.duration / 60) if longest else 0,
+        "most_popular_seat": f"Chair {popular['chair_id']}" if popular else None,
+        "average_duration": round(avg_duration.total_seconds() / 60) if avg_duration else 0,
+        "longest_session_table": f"Chair {longest.chair_id}" if longest else None,
+        "longest_session_duration": round(longest.duration.total_seconds() / 60) if longest else 0,
+        "longest_current_stay": f"Chair {ongoing.chair_id}" if ongoing else None
     })
-
-
 # =====================================================
 # === REDIS: ENTRY & CHAIR STATES
 # =====================================================

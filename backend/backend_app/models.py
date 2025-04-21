@@ -117,6 +117,7 @@ class Customer(models.Model):
         return f"Customer {self.customer_id}"
 
 class SeatDetection(models.Model):
+    camera = models.ForeignKey('Camera', on_delete=models.CASCADE, related_name='detections')  # NEW
     chair_id = models.IntegerField()
     time_start = models.DateTimeField()
     time_end = models.DateTimeField(null=True, blank=True)
@@ -127,7 +128,8 @@ class SeatDetection(models.Model):
         return None
 
     def __str__(self):
-        return f"Chair {self.chair_id} from {self.time_start} to {self.time_end}"
+        return f"Camera {self.camera.id} - Chair {self.chair_id} - {self.time_start.strftime('%Y-%m-%d %H:%M:%S')}"
+
 
 
 class EntryEvent(models.Model):
@@ -189,11 +191,17 @@ class ActivityLog(models.Model):
     cafe = models.ForeignKey(UserCafe, on_delete=models.CASCADE, related_name="activity_logs")
     seat_detection = models.ForeignKey(SeatDetection, on_delete=models.CASCADE, related_name="activity_logs")
     customer = models.ForeignKey(Customer, null=True, blank=True, on_delete=models.SET_NULL)
-    action = models.CharField(max_length=255)
+    ACTIVITY_TYPE = [
+    ("seating", "Seating"),
+    ("entry", "Entry"),
+    ("exit", "Exit"),
+]
+
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPE, default="seating")
     timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Activity {self.action} at {self.timestamp}"
+        return f"Activity {self.activity_type} at {self.timestamp}"
 
 class Notification(models.Model):
     
