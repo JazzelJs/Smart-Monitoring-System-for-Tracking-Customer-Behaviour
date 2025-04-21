@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model, authenticate
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import (
-    EmailOTP, UserCafe, Floor, Camera, SeatDetection
+    EmailOTP, UserCafe, Floor, Camera, SeatDetection, EntryEvent
 )
 
 User = get_user_model()
@@ -185,11 +185,18 @@ class CameraSerializer(serializers.ModelSerializer):
 
 
 class SeatDetectionSerializer(serializers.ModelSerializer):
+    duration = serializers.SerializerMethodField()
+
     class Meta:
         model = SeatDetection
-        fields = '__all__'
+        fields = ['id', 'chair_id', 'time_start', 'time_end', 'duration']
+        read_only_fields = ['id', 'duration']
 
-    def validate(self, data):
-        if data.get("time_start"):
-            data["month"] = data["time_start"].date().replace(day=1)
-        return data
+    def get_duration(self, obj):
+        return obj.duration()
+
+
+class entry_event_serializer(serializers.ModelSerializer):
+    class Meta:
+        model = EntryEvent
+        fields = ['event_type', 'timestamp', 'track_id']

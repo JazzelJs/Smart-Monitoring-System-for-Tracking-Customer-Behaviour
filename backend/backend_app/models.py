@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.utils import timezone
 from datetime import timedelta
 import datetime
+
 # --- AUTH & USER ---
 
 class CustomUserManager(BaseUserManager):
@@ -116,15 +117,36 @@ class Customer(models.Model):
         return f"Customer {self.customer_id}"
 
 class SeatDetection(models.Model):
-    camera = models.ForeignKey('Camera', on_delete=models.CASCADE, related_name="detections")
-    seat = models.ForeignKey('Seat', on_delete=models.CASCADE, related_name="detections")
+    chair_id = models.IntegerField()
     time_start = models.DateTimeField()
     time_end = models.DateTimeField(null=True, blank=True)
-    duration = models.FloatField(null=True, blank=True)
-    month = models.DateField(editable=False)
+
+    def duration(self):
+        if self.time_start and self.time_end:
+            return (self.time_end - self.time_start).total_seconds()
+        return None
 
     def __str__(self):
-        return f"Detection {self.id} for Seat {self.seat.id} using Camera {self.camera.id}"
+        return f"Chair {self.chair_id} from {self.time_start} to {self.time_end}"
+
+
+class EntryEvent(models.Model):
+    EVENT_CHOICES = [('enter', 'Enter'), ('exit', 'Exit')]
+    event_type = models.CharField(max_length=5, choices=EVENT_CHOICES)
+    timestamp = models.DateTimeField(default=timezone.now)
+    track_id = models.IntegerField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.event_type} at {self.timestamp}"
+
+
+class HourlyEntrySummary(models.Model):
+    hour_block = models.DateTimeField(unique=True)
+    entered = models.PositiveIntegerField(default=0)
+    exited = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return f"{self.hour_block.strftime('%Y-%m-%d %H:%M')} | Entered: {self.entered}, Exited: {self.exited}"
 
  
    

@@ -3,83 +3,82 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth import get_user_model
 from django.utils.timezone import now
-from django.http import JsonResponse
-from datetime import timedelta
+from django.http import JsonResponse, StreamingHttpResponse
+from django.shortcuts import get_object_or_404
+from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count, Avg
-import redis, json, subprocess, os
-from .utils import generate_otp, send_otp_via_email
 
+from datetime import timedelta
+import redis, json, subprocess, os, time, cv2
+
+from .utils import generate_otp, send_otp_via_email
 from .models import (
     User, EmailOTP, UserCafe, Floor, Camera, Seat, 
-    SeatDetection, ActivityLog, Notification
+    SeatDetection, ActivityLog, Notification, EntryEvent, HourlyEntrySummary
 )
-
 from .serializers import (
     UserSerializer, UserListSerializer, UserDetailSerializer,
     LoginSerializer, ResetPasswordSerializer, ValidateOTPSerializer,
     SetNewPasswordSerializer, LogoutSerializer,
     UserCafeSerializer, FloorSerializer, CameraSerializer,
-    SeatDetectionSerializer
+    SeatDetectionSerializer, entry_event_serializer,
 )
+from .detector import start_detection, stop_detection
+import backend_app.shared_video as shared_video
 
 User = get_user_model()
+redis_client = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
+
 
 # =====================================================
-# === AUTHENTICATION & USER MANAGEMENT
+# === AUTHENTICATION & USER
 # =====================================================
 
 class RegisterWithOTPView(generics.GenericAPIView):
     serializer_class = UserSerializer
-
     def post(self, request):
         email = request.data.get("email")
         if User.objects.filter(email=email).exists():
-            return Response({"error": "Email already exists"}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({"error": "Email already exists"}, status=400)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         otp = generate_otp(user.email)
         send_otp_via_email(user.email, otp)
-
-        return Response({"message": "User created and OTP sent"}, status=status.HTTP_201_CREATED)
+        return Response({"message": "User created and OTP sent"}, status=201)
 
 class LoginView(generics.GenericAPIView):
     serializer_class = LoginSerializer
-
     def post(self, request):
         serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        return Response(serializer.validated_data, status=200)
 
 class ResetPasswordView(generics.GenericAPIView):
     serializer_class = ResetPasswordSerializer
-
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         otp = generate_otp(serializer.validated_data['email'])
         send_otp_via_email(serializer.validated_data['email'], otp)
-        return Response({"message": "OTP sent to email"}, status=status.HTTP_200_OK)
+        return Response({"message": "OTP sent to email"}, status=200)
 
 class ValidateOTPView(generics.GenericAPIView):
     serializer_class = ValidateOTPSerializer
-
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        return Response({"message": "OTP validated successfully"}, status=status.HTTP_200_OK)
+        return Response({"message": "OTP validated successfully"}, status=200)
 
 class SetNewPasswordView(generics.GenericAPIView):
     serializer_class = SetNewPasswordSerializer
-
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response({"message": "Password reset successful"}, status=status.HTTP_200_OK)
+        return Response({"message": "Password reset successful"}, status=200)
 
 class LogoutView(APIView):
     def post(self, request):
@@ -88,9 +87,9 @@ class LogoutView(APIView):
         try:
             token = RefreshToken(serializer.validated_data["refresh"])
             token.blacklist()
-            return Response({"message": "Successfully logged out."}, status=status.HTTP_205_RESET_CONTENT)
+            return Response({"message": "Successfully logged out."}, status=205)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": str(e)}, status=400)
 
 class UserListView(generics.ListAPIView):
     queryset = User.objects.all()
@@ -102,6 +101,7 @@ class UserDetailView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'pk'
 
+
 # =====================================================
 # === CAFE, FLOOR, CAMERA
 # =====================================================
@@ -110,7 +110,6 @@ class UserCafeCreateView(generics.CreateAPIView):
     queryset = UserCafe.objects.all()
     serializer_class = UserCafeSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
@@ -118,7 +117,6 @@ class FloorCreateView(generics.CreateAPIView):
     queryset = Floor.objects.all()
     serializer_class = FloorSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def perform_create(self, serializer):
         user_cafe = UserCafe.objects.filter(user=self.request.user).first()
         serializer.save(cafe=user_cafe)
@@ -126,16 +124,12 @@ class FloorCreateView(generics.CreateAPIView):
 class FloorListView(generics.ListAPIView):
     serializer_class = FloorSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def get_queryset(self):
         return Floor.objects.filter(cafe__user=self.request.user)
-
-
 
 class CameraListView(generics.ListAPIView):
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def get_queryset(self):
         return Camera.objects.filter(floor__cafe__user=self.request.user).order_by('-last_active')
 
@@ -143,54 +137,42 @@ class CameraCreateView(generics.CreateAPIView):
     queryset = Camera.objects.all()
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def get_serializer_context(self):
-        return {"request": self.request}  # ✅ required for auto-assigning `cafe`
+        return {"request": self.request}
 
 class CameraDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def get_queryset(self):
         return Camera.objects.filter(floor__cafe__user=self.request.user)
+
 
 # =====================================================
 # === SEAT DETECTION & ANALYTICS
 # =====================================================
 
-@api_view(['POST'])
-def record_seat_detection(request):
-    serializer = SeatDetectionSerializer(data=request.data)
+class SeatDetectionListCreateView(generics.ListCreateAPIView):
+    queryset = SeatDetection.objects.all()
+    serializer_class = SeatDetectionSerializer
 
-    if serializer.is_valid():
-        detection = serializer.save()
+class SeatDetectionUpdateView(APIView):
+    def patch(self, request, pk):
+        instance = get_object_or_404(SeatDetection, pk=pk)
+        serializer = SeatDetectionSerializer(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Updated"}, status=200)
+        return Response(serializer.errors, status=400)
 
-        ActivityLog.objects.create(
-            cafe=detection.camera.cafe,
-            seat_detection=detection,
-            customer=None,
-            action="Seated"
-        )
-
-        total = Seat.objects.filter(cafe=detection.camera.cafe).count()
-        occupied = Seat.objects.filter(cafe=detection.camera.cafe, is_occupied=True).count()
-        if total > 0 and occupied / total >= 0.8:
-            Notification.objects.create(
-                cafe=detection.camera.cafe,
-                seat_detection=detection,
-                message="Nearly all seats are currently occupied!",
-                category="alert"
-            )
-
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class EntryEventListCreateView(generics.ListCreateAPIView):
+    queryset = EntryEvent.objects.all()
+    serializer_class = entry_event_serializer
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def seat_summary_analytics(request):
     user = request.user
     month_start = now().replace(day=1)
-
     cafes = UserCafe.objects.filter(user=user)
     seats = Seat.objects.filter(cafe__in=cafes)
     detections = SeatDetection.objects.filter(seat__in=seats, month__gte=month_start)
@@ -199,74 +181,83 @@ def seat_summary_analytics(request):
     avg_duration = detections.aggregate(avg=Avg("duration"))["avg"]
     longest = detections.order_by("-duration").first()
 
-    response = {
+    return Response({
         "most_popular_seat": f"Table {popular['seat__seat_id']}" if popular else None,
         "average_duration": round(avg_duration / 60) if avg_duration else 0,
         "longest_session_table": f"Table {longest.seat.seat_id}" if longest else None,
         "longest_session_duration": round(longest.duration / 60) if longest else 0,
-    }
+    })
 
-    return Response(response)
-
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def current_occupied_seats(request):
-    user = request.user
-    cafes = UserCafe.objects.filter(user=user)
-    floors = Floor.objects.filter(cafe__in=cafes)
-    allowed_camera_ids = Camera.objects.filter(floor__in=floors).values_list('id', flat=True)
-
-    r = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
-    data = r.get("current_occupied_seats")
-
-    if data:
-        all_seats = json.loads(data).get("seats", [])
-        user_seats = [seat for seat in all_seats if int(seat.get("camera_id", 0)) in allowed_camera_ids]
-        return JsonResponse({"seats": user_seats})
-
-    return JsonResponse({"seats": []})
 
 # =====================================================
-# === YOLO CONTROL
+# === REDIS: ENTRY & CHAIR STATES
 # =====================================================
 
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def start_yolo_detection(request):
-    r = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
-    if r.get("yolo_pid"):
-        return Response({"status": "already running"}, status=400)
+@csrf_exempt
+def update_hourly_entry_summary(request):
+    end_hour = now().replace(minute=0, second=0, microsecond=0)
+    start_hour = end_hour - timedelta(hours=1)
+    events = EntryEvent.objects.filter(timestamp__gte=start_hour, timestamp__lt=end_hour)
+    entered = events.filter(event_type='enter').count()
+    exited = events.filter(event_type='exit').count()
 
+    summary, created = HourlyEntrySummary.objects.update_or_create(
+        hour_block=start_hour,
+        defaults={'entered': entered, 'exited': exited}
+    )
+    return JsonResponse({
+        "status": "ok",
+        "hour": start_hour.strftime('%Y-%m-%d %H:%M'),
+        "entered": entered,
+        "exited": exited,
+        "created": created
+    })
+
+@csrf_exempt
+def get_entry_state(request):
     try:
-        process = subprocess.Popen(["python", "yolo_realtime_detection.py"])
-        r.set("yolo_pid", str(process.pid))
-        r.set("yolo_status", "Running")
-        return Response({"status": "YOLO started"})
+        data = redis_client.get("entry_state")
+        return JsonResponse(json.loads(data or '{}'))
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        return JsonResponse({"error": str(e)}, status=500)
 
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def stop_yolo_detection(request):
-    r = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
-    pid = r.get("yolo_pid")
-    if not pid:
-        return Response({"status": "not running"}, status=400)
-
+@csrf_exempt
+def chair_occupancy_view(request):
     try:
-        os.kill(int(pid), 9)
-        r.delete("yolo_pid")
-        r.set("yolo_status", "Stopped")
-        return Response({"status": "YOLO stopped"})
+        data = redis_client.get("chair_occupancy")
+        return JsonResponse(json.loads(data or '{}'))
+    except redis.exceptions.ConnectionError:
+        return JsonResponse({"error": "Redis connection failed"}, status=503)
+
+@csrf_exempt
+def reset_chair_cache(request):
+    try:
+        redis_client.delete("cached_chair_positions")
+        return JsonResponse({"status": "cache cleared"})
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        return JsonResponse({"error": str(e)}, status=500)
+
 
 # =====================================================
-# === STREAMS & REDIS VIEW
+# === VIDEO STREAMING & DETECTION
 # =====================================================
 
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
+@csrf_exempt
+def video_feed(request):
+    def generate_stream():
+        while True:
+            with shared_video.video_lock:
+                frame = shared_video.latest_frame.copy() if shared_video.latest_frame is not None else None
+            if frame is None:
+                continue
+            ret, jpeg = cv2.imencode('.jpg', frame)
+            if not ret:
+                continue
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+            time.sleep(0.03)
+
+    return StreamingHttpResponse(generate_stream(), content_type='multipart/x-mixed-replace; boundary=frame')
+
 def get_camera_streams(request):
     user = request.user
     cameras = Camera.objects.filter(cafe__user=user, status='active')
@@ -281,18 +272,15 @@ def get_camera_streams(request):
 
     return Response({"streams": streams})
 
-@api_view(['GET'])
-def get_seat_occupancy(request):
+@csrf_exempt
+def start_detection_view(request):
     try:
-        r = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
-        data = r.get("seat_occupancy")
-        return JsonResponse(json.loads(data)) if data else JsonResponse({"occupied": 0, "available": 0})
+        started = start_detection()
+        return JsonResponse({"status": "started" if started else "already running"})
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def get_detection_status(request):
-    r = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
-    status = r.get("yolo_status") or "Stopped"
-    return Response({"status": status})
+@csrf_exempt
+def stop_detection_view(request):
+    stop_detection()
+    return JsonResponse({"status": "stopped"})

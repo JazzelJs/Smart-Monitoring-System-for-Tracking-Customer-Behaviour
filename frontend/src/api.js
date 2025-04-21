@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { getRefreshToken, saveAccessToken, clearTokens } from './utils/auth';
 
+export const API_BASE_URL = 'http://10.10.170.26:8000/api';
+
 const api = axios.create({
-  baseURL: 'http://10.88.20.216:8000/api', //
+  baseURL: API_BASE_URL, //
 });
 
 api.interceptors.response.use(
@@ -14,7 +16,7 @@ api.interceptors.response.use(
       const refresh = getRefreshToken();
       if (refresh) {
         try {
-          const res = await axios.post('http://10.88.20.216:8000/api/auth/token/refresh/', { refresh });
+          const res = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, { refresh });
           saveAccessToken(res.data.access);
           originalRequest.headers['Authorization'] = `Bearer ${res.data.access}`;
           return axios(originalRequest);
