@@ -19,7 +19,7 @@ from .views import (
     reset_chair_cache, chair_occupancy_view,
     update_hourly_entry_summary, SeatDetectionListCreateView, SeatDetectionUpdateView,
     EntryEventListCreateView, get_entry_state, video_feed,
-    seat_summary_analytics,
+    seat_summary_analytics, peak_hour_analytics, visitor_traffic,
 )
 
 urlpatterns = [
@@ -50,6 +50,8 @@ urlpatterns = [
 
     # === Seat Analytics ===
     path('analytics/seats/summary/', seat_summary_analytics, name='seat-summary'),
+    path('analytics/peak-hours/', peak_hour_analytics),
+
 
     # === Real-time Chair Status ===
     path('chair-occupancy/', chair_occupancy_view, name='chair-occupancy'),
@@ -59,6 +61,8 @@ urlpatterns = [
     path('entry-events/', EntryEventListCreateView.as_view(), name='entry-events'),
     path('entry-state/', get_entry_state, name='entry-state'),
     path('aggregate-hourly/', update_hourly_entry_summary, name='hourly-entry-summary'),
+    path('analytics/visitor-traffic/', visitor_traffic, name='visitor-traffic'),
+    
 
     # === Seat Detection DB ===
     path('seats/', SeatDetectionListCreateView.as_view(), name='seat-detections'),

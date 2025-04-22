@@ -177,3 +177,6 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # or hardcode temporarily
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # or hardcode
+
+USE_TZ = True
+TIME_ZONE = 'Asia/Jakarta'  # Or whatever timezone you want

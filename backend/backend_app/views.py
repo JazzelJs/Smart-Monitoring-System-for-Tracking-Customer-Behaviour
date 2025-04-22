@@ -4,11 +4,15 @@ from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
-from django.utils.timezone import now
+from django.utils import timezone 
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count, Avg, F, ExpressionWrapper, DurationField
+from django.db.models.functions import TruncDate, TruncWeek, ExtractHour
+from collections import defaultdict
+from datetime import timedelta
+import calendar
 
 
 
@@ -175,7 +179,7 @@ class EntryEventListCreateView(generics.ListCreateAPIView):
 @permission_classes([permissions.IsAuthenticated])
 def seat_summary_analytics(request):
     user = request.user
-    month_start = now().replace(day=1)
+    month_start = timezone.now().replace(day=1)
 
     cafes = UserCafe.objects.filter(user=user)
     cameras = Camera.objects.filter(cafe__in=cafes)
@@ -203,7 +207,7 @@ def seat_summary_analytics(request):
 
     # Longest ongoing session
     ongoing = detections.filter(time_end__isnull=True).annotate(
-        current_duration=ExpressionWrapper(now() - F("time_start"), output_field=DurationField())
+        current_duration=ExpressionWrapper(timezone.now() - F("time_start"), output_field=DurationField())
     ).order_by("-current_duration").first()
 
     return Response({
@@ -212,14 +216,109 @@ def seat_summary_analytics(request):
         "longest_session_table": f"Chair {longest.chair_id}" if longest else None,
         "longest_session_duration": round(longest.duration.total_seconds() / 60) if longest else 0,
         "longest_current_stay": f"Chair {ongoing.chair_id}" if ongoing else None
+
     })
+
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def peak_hour_analytics(request):
+
+    user = request.user
+    cafes = UserCafe.objects.filter(user=user)
+    cameras = Camera.objects.filter(cafe__in=cafes)
+    end_time = timezone.now().astimezone(timezone.get_current_timezone())
+    start_time = end_time - timedelta(days=7)
+    entries = EntryEvent.objects.filter(camera__in=cameras,event_type="enter", timestamp__range=(start_time, end_time))
+
+    # Peak hour
+    hour_counts = defaultdict(int)
+    day_counts = defaultdict(int)
+    days = set()
+
+    for e in entries:
+        hour = e.timestamp.replace(minute=0, second=0, microsecond=0)
+        hour_counts[hour] += 1
+
+        day_name = calendar.day_name[e.timestamp.weekday()]
+        day_counts[day_name] += 1
+
+        days.add(e.timestamp.date())
+
+    peak_hour, hour_visitors = max(hour_counts.items(), key=lambda x: x[1], default=(None, 0))
+    peak_day, day_visitors = max(day_counts.items(), key=lambda x: x[1], default=("None", 0))
+    avg_visitors = entries.count() // len(days) if days else 0
+
+    # 🔸 CURRENT OCCUPANCY
+    try:
+        redis_data = redis_client.get("chair_occupancy")
+        data = json.loads(redis_data or '{}')
+        chairs = data.get("chairs", {})
+        occupied = sum(1 for c in chairs.values() if c["status"] == "occupied")
+        total = len(chairs)
+        occupancy_percent = round((occupied / total) * 100) if total else 0
+    except:
+        occupied, total, occupancy_percent = 0, 0, 0
+
+    return Response({
+        "peak_hour": f"{peak_hour.hour:02d}:00 - {peak_hour.hour+1:02d}:00" if peak_hour else "-",
+        "peak_hour_visitors": hour_visitors,
+        "peak_day": peak_day,
+        "peak_day_visitors": day_visitors,
+        "avg_daily_visitors": avg_visitors,
+        "occupancy_percent": occupancy_percent,
+        "occupied_seats": occupied,
+        "total_seats": total,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def visitor_traffic(request):
+
+    user = request.user
+    cafes = UserCafe.objects.filter(user=user)
+    cameras = Camera.objects.filter(cafe__in=cafes)
+    mode = request.GET.get('mode', 'daily')
+    now_time = timezone.now()
+
+    if mode == 'daily':
+        # Past 1 day, group by hour
+        start_time = now_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        entries = EntryEvent.objects.filter(event_type='enter', timestamp__gte=start_time)
+        data = entries.annotate(hour=ExtractHour('timestamp')).values('hour').annotate(count=Count('id')).order_by('hour')
+        result = [{"label": f"{d['hour']:02d}:00", "count": d['count']} for d in data]
+
+    elif mode == 'weekly':
+        # Past 7 days, group by day
+        start_time = now_time - timedelta(days=6)
+        entries = EntryEvent.objects.filter(event_type='enter', timestamp__date__gte=start_time.date())
+        data = entries.annotate(day=TruncDate('timestamp')).values('day').annotate(count=Count('id')).order_by('day')
+        result = [{"label": d['day'].strftime('%A'), "count": d['count']} for d in data]
+
+    elif mode == 'monthly':
+        # Last 4 weeks, group by week
+        start_time = now_time - timedelta(weeks=4)
+        entries = EntryEvent.objects.filter(event_type='enter', timestamp__gte=start_time)
+        data = entries.annotate(week=TruncWeek('timestamp')).values('week').annotate(count=Count('id')).order_by('week')
+        result = [{"label": d['week'].strftime('Week %W'), "count": d['count']} for d in data]
+
+    else:
+        result = []
+
+    if not result:
+        result = [{"label": "No Data", "count": 0}]
+
+    return Response(result)
+
 # =====================================================
 # === REDIS: ENTRY & CHAIR STATES
 # =====================================================
 
 @csrf_exempt
 def update_hourly_entry_summary(request):
-    end_hour = now().replace(minute=0, second=0, microsecond=0)
+    end_hour = timezone.now().replace(minute=0, second=0, microsecond=0)
     start_hour = end_hour - timedelta(hours=1)
     events = EntryEvent.objects.filter(timestamp__gte=start_hour, timestamp__lt=end_hour)
     entered = events.filter(event_type='enter').count()

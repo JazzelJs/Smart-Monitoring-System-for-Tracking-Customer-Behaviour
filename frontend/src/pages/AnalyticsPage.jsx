@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api, { API_BASE_URL } from "../api";
+import AnalyticsTabs from '../components/AnalyticsTabs';
 
 export default function AnalyticsPage() {
   const [summary, setSummary] = useState(null);
@@ -171,9 +172,7 @@ export default function AnalyticsPage() {
 
       {/* Tabs */}
       <div className="flex gap-6 text-lg mb-8">
-        <div className="px-4 py-2 border-2 border-dashed border-purple-400 text-purple-600 rounded-lg font-semibold">Seats</div>
-        <div className="text-gray-400">Peak Hours</div>
-        <div className="text-gray-400">Customer</div>
+        <AnalyticsTabs />
       </div>
 
       {/* Live Feed */}

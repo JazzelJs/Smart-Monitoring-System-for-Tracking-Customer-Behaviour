@@ -6,8 +6,10 @@ import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
 import HomePage from './pages/HomePage';
 import AnalyticsPage from './pages/AnalyticsPage'; // ✅ Add this import
+import PeakHourAnalytics from './pages/PeakHourAnalytics'; // ✅ Add this import
 import ProtectedRoute from './components/ProtectedRoute';
 import ManageCameras from './pages/ManageCamera'; // ✅ Add this import
+
 
 function App() {
   return (
@@ -45,6 +47,17 @@ function App() {
               <AnalyticsPage />
             </ProtectedRoute>
           }
+
+          />
+
+        {/* ✅ Analytics Seat Page */}
+        <Route
+          path="/analytics/peak-hour"
+          element={
+            <ProtectedRoute>
+              <PeakHourAnalytics />
+            </ProtectedRoute>
+          } 
         />
         {/* ✅ Manage Camera */}
         <Route
