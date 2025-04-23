@@ -5,15 +5,25 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
 import HomePage from './pages/HomePage';
-import AnalyticsPage from './pages/AnalyticsPage'; // ✅ Add this import
-import PeakHourAnalytics from './pages/PeakHourAnalytics'; // ✅ Add this import
+import AnalyticsPage from './pages/AnalyticsPage';
+import PeakHourAnalytics from './pages/PeakHourAnalytics';
+import ManageCameras from './pages/ManageCamera';
+import CustomerAnalytics from './pages/CustomerAnalytics';
 import ProtectedRoute from './components/ProtectedRoute';
-import ManageCameras from './pages/ManageCamera'; // ✅ Add this import
-
+import useDetectionStatus from './hooks/UseDetection';
 
 function App() {
+  const isDetecting = useDetectionStatus();  // ⬅️ Add the hook here
+
   return (
     <Router>
+      {/* Optional: Global UI based on detection */}
+      {isDetecting && (
+        <div className="fixed top-0 right-0 bg-green-500 text-white px-4 py-2 rounded-bl-xl z-50">
+          Detection Running...
+        </div>
+      )}
+
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -39,7 +49,7 @@ function App() {
           }
         />
 
-        {/* ✅ Analytics Seat Page */}
+        {/* Analytics */}
         <Route
           path="/analytics/seats"
           element={
@@ -47,19 +57,25 @@ function App() {
               <AnalyticsPage />
             </ProtectedRoute>
           }
-
-          />
-
-        {/* ✅ Analytics Seat Page */}
+        />
         <Route
           path="/analytics/peak-hour"
           element={
             <ProtectedRoute>
               <PeakHourAnalytics />
             </ProtectedRoute>
-          } 
+          }
         />
-        {/* ✅ Manage Camera */}
+        <Route
+          path="/analytics/customer"
+          element={
+            <ProtectedRoute>
+              <CustomerAnalytics />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Manage Camera */}
         <Route
           path="/settings/manage-camera"
           element={

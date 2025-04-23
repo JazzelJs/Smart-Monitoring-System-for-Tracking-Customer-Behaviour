@@ -74,6 +74,7 @@ export default function AnalyticsPage() {
     return () => clearInterval(interval);
   }, [lastEventSignature]);
 
+  
   const handleStart = () => {
     api.post('/analytics/start-detection/')
       .then(() => {

@@ -8,7 +8,7 @@ export default function AnalyticsTabs() {
   const tabs = [
     { name: 'Seats', path: '/analytics/seats' },
     { name: 'Peak Hours', path: '/analytics/peak-hour' },
-    { name: 'Customers', path: '/analytics/customers' },
+    { name: 'Customers', path: '/analytics/customer' },
   ];
 
   return (

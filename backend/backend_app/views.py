@@ -312,6 +312,38 @@ def visitor_traffic(request):
 
     return Response(result)
 
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def customer_analytics(request):
+    user = request.user
+    cafes = UserCafe.objects.filter(user=user)
+    now = timezone.now()
+    month_start = now.replace(day=1)
+
+    # Query customers for user's cafes
+    customers = Customer.objects.filter(cafe__in=cafes)
+
+    # Filter this month
+    current_month_customers = customers.filter(first_visit__gte=month_start)
+
+    # Metrics
+    first_time_count = current_month_customers.filter(status='new').count()
+    returning_count = current_month_customers.filter(status='returning').count()
+    total_customers = current_month_customers.count()
+
+    retention_rate = (returning_count / total_customers * 100) if total_customers else 0
+    avg_visits = customers.aggregate(avg_visits=Avg('visit_count'))['avg_visits'] or 0
+
+    return Response({
+        "first_time_customers": first_time_count,
+        "returning_customers": returning_count,
+        "retention_rate": round(retention_rate, 2),
+        "average_visits": round(avg_visits, 1)
+    })
+
+
 # =====================================================
 # === REDIS: ENTRY & CHAIR STATES
 # =====================================================
@@ -361,9 +393,44 @@ def reset_chair_cache(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
+# === CUSTOMER TRACKING UTILS ===
+from .models import Customer
+
+def get_or_create_customer(face_id):
+    customer, created = Customer.objects.get_or_create(
+        face_id=face_id,
+        defaults={
+            'first_visit': timezone.now(),
+            'visit_count': 1,
+            'last_visit': timezone.now(),
+            'average_stay': 0.0,
+            'status': 'new'
+        }
+    )
+    if not created:
+        customer.visit_count += 1
+        customer.last_visit = timezone.now()
+        customer.status = 'returning'
+        customer.save()
+    return customer
+
+def log_entry_event(track_id, face_id=None):
+    customer = None
+    if face_id:
+        customer = get_or_create_customer(face_id)
+    
+    EntryEvent.objects.create(
+        event_type='enter',
+        track_id=track_id,
+        customer=customer  # 🔥 Link customer here!
+    )
+
 # =====================================================
 # === VIDEO STREAMING & DETECTION
 # =====================================================
+
+
+
 
 @csrf_exempt
 def video_feed(request):
@@ -398,12 +465,36 @@ def get_camera_streams(request):
 @csrf_exempt
 def start_detection_view(request):
     try:
+        # Check Redis flag first
+        status = redis_client.get("detection_status")
+        if status == "running":
+            return JsonResponse({"status": "already running"})
+
+        # Start detection process
         started = start_detection()
-        return JsonResponse({"status": "started" if started else "already running"})
+
+        if started:
+            redis_client.set("detection_status", "running")
+            return JsonResponse({"status": "started"})
+        else:
+            return JsonResponse({"status": "failed to start"}, status=500)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
+
 @csrf_exempt
 def stop_detection_view(request):
-    stop_detection()
-    return JsonResponse({"status": "stopped"})
+    try:
+        stop_detection()
+        redis_client.set("detection_status", "stopped")
+        return JsonResponse({"status": "stopped"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def detection_status(request):
+    # Example: use Redis flag or global variable
+    status = redis_client.get("detection_status") or "stopped"
+    return Response({"is_detecting": status == "running"})

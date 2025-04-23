@@ -107,6 +107,8 @@ class Camera(models.Model):
 
 class Customer(models.Model):
     customer_id = models.AutoField(primary_key=True)
+    cafe = models.ForeignKey('UserCafe', on_delete=models.CASCADE, related_name="customers")  # 🔥 Add this line
+    face_id = models.CharField(max_length=100, unique=True)  # Link to face embeddings
     first_visit = models.DateTimeField()
     visit_count = models.IntegerField(default=0)
     last_visit = models.DateTimeField(null=True, blank=True)
@@ -114,7 +116,8 @@ class Customer(models.Model):
     status = models.CharField(max_length=50, choices=[("new", "New"), ("returning", "Returning")])
 
     def __str__(self):
-        return f"Customer {self.customer_id}"
+        return f"Customer {self.customer_id} - Cafe {self.cafe.name}"
+
 
 class SeatDetection(models.Model):
     camera = models.ForeignKey('Camera', on_delete=models.CASCADE, related_name='detections')  # NEW
@@ -135,6 +138,7 @@ class SeatDetection(models.Model):
 class EntryEvent(models.Model):
     EVENT_CHOICES = [('enter', 'Enter'), ('exit', 'Exit')]
     event_type = models.CharField(max_length=5, choices=EVENT_CHOICES)
+    customer = models.ForeignKey(Customer, null=True, blank=True, on_delete=models.SET_NULL)
     timestamp = models.DateTimeField(default=timezone.now)
     track_id = models.IntegerField(null=True, blank=True)
 

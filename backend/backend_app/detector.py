@@ -10,12 +10,14 @@ import sys
 from datetime import datetime
 from django.utils.timezone import make_aware
 import backend_app.shared_video as shared_video
+import pickle
 
 # === Django setup ===
 sys.path.append("D:/Kuliah/Tugas Akhir/TheTugasFinal/backend")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
 django.setup()
 from backend_app.models import EntryEvent, SeatDetection, Camera
+from backend_app.face_recognition import process_face_recognition, detector as face_detector, recognizer as face_recognizer, recognition_threshold
 
 CAMERA_ID = 11
 try:
@@ -117,6 +119,13 @@ def run_detection():
         timestamp_iso = datetime.utcnow().isoformat()
         results = model.track(frame, persist=True)[0]
         detected_persons = []
+
+        # === Face Recognition (Refactored) ===
+        face_results = process_face_recognition(frame)
+        for (x, y, w, h), label in face_results:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
 
         if results and results.boxes is not None:
             for box in results.boxes:
@@ -241,6 +250,7 @@ def start_detection():
     if detection_thread is None or not detection_thread.is_alive():
         detection_thread = threading.Thread(target=run_detection, daemon=True)
         detection_thread.start()
+        
         return True
     return False
 
