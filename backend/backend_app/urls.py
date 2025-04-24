@@ -19,7 +19,7 @@ from .views import (
     reset_chair_cache, chair_occupancy_view,
     update_hourly_entry_summary, SeatDetectionListCreateView, SeatDetectionUpdateView,
     EntryEventListCreateView, get_entry_state, video_feed,
-    seat_summary_analytics, peak_hour_analytics, visitor_traffic, customer_analytics, detection_status
+    seat_summary_analytics, peak_hour_analytics, visitor_traffic, customer_analytics, detection_status, activity_log, monthly_report_summary, historical_reports
 )
 
 urlpatterns = [
@@ -64,14 +64,17 @@ urlpatterns = [
     path('aggregate-hourly/', update_hourly_entry_summary, name='hourly-entry-summary'),
     path('analytics/visitor-traffic/', visitor_traffic, name='visitor-traffic'),
     path('analytics/detection-status/', detection_status, name='detection-status'),
-    
-
+    path('analytics/activity-log/', activity_log, name ='activity-log'),
     # === Seat Detection DB ===
     path('seats/', SeatDetectionListCreateView.as_view(), name='seat-detections'),
     path('seats/<int:pk>/', SeatDetectionUpdateView.as_view(), name='update-seat'),
 
     # === Live Video Feed ===
     path('video_feed/', video_feed, name='video_feed'),
+
+    # Reports
+     path('analytics/monthly-report/<int:year>/<int:month>/', monthly_report_summary),
+     path('historical-data/reports/', historical_reports),
 ]
 
 # Serve media files if in DEBUG mode

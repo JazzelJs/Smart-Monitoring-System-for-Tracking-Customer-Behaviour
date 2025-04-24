@@ -136,6 +136,7 @@ class SeatDetection(models.Model):
 
 
 class EntryEvent(models.Model):
+    camera = models.ForeignKey(Camera, null=True, blank=True, on_delete=models.SET_NULL)
     EVENT_CHOICES = [('enter', 'Enter'), ('exit', 'Exit')]
     event_type = models.CharField(max_length=5, choices=EVENT_CHOICES)
     customer = models.ForeignKey(Customer, null=True, blank=True, on_delete=models.SET_NULL)
@@ -179,17 +180,17 @@ class PeakHour(models.Model):
     def __str__(self):
         return f"Peak Hour {self.start_time} - {self.end_time} in {self.cafe.name}"
 
+
+
 class Report(models.Model):
-    
     cafe = models.ForeignKey(UserCafe, on_delete=models.CASCADE, related_name="reports")
-    peak_hour = models.ForeignKey(PeakHour, on_delete=models.CASCADE, related_name="reports")
-    report_date = models.DateField()
-    peak_customer = models.IntegerField()
-    returning_customer = models.FloatField()
+    year = models.IntegerField()
+    month = models.IntegerField()
+    file_url = models.URLField(null=True, blank=True)  # Add this to store the PDF link
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Report {self.id} for {self.cafe.name}"
-
+        return f"Report {self.year}-{self.month} for {self.cafe.name}"
 class ActivityLog(models.Model):
     
     cafe = models.ForeignKey(UserCafe, on_delete=models.CASCADE, related_name="activity_logs")

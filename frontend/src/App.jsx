@@ -11,6 +11,8 @@ import ManageCameras from './pages/ManageCamera';
 import CustomerAnalytics from './pages/CustomerAnalytics';
 import ProtectedRoute from './components/ProtectedRoute';
 import useDetectionStatus from './hooks/UseDetection';
+import ActivityLogPage from './pages/ActivityLog';
+import HistoricalDataPage from './pages/HistoricalData';
 
 function App() {
   const isDetecting = useDetectionStatus();  // ⬅️ Add the hook here
@@ -71,6 +73,25 @@ function App() {
           element={
             <ProtectedRoute>
               <CustomerAnalytics />
+            </ProtectedRoute>
+          }
+        />
+        {/* Activity Log */}
+        <Route
+          path="/activity-log"
+          element={
+            <ProtectedRoute>
+              <ActivityLogPage />
+            </ProtectedRoute>
+          }
+        />
+
+      {/* Historical Data */}
+      <Route
+          path="/historical-data"
+          element={
+            <ProtectedRoute>
+              <HistoricalDataPage/>
             </ProtectedRoute>
           }
         />

@@ -4,6 +4,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import (
     EmailOTP, UserCafe, Floor, Camera, SeatDetection, EntryEvent
 )
+from datetime import datetime
+
+import calendar
 
 User = get_user_model()
 
@@ -200,3 +203,40 @@ class entry_event_serializer(serializers.ModelSerializer):
     class Meta:
         model = EntryEvent
         fields = ['event_type', 'timestamp', 'track_id']
+
+
+
+#Reports
+
+# serializers.py
+from rest_framework import serializers
+from .models import Report
+
+class ReportSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    date_range = serializers.SerializerMethodField()
+    url_view = serializers.SerializerMethodField()
+    url_download = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Report
+        fields = ['id', 'name', 'date_range', 'file_url', 'url_view', 'url_download']
+
+    def get_name(self, obj):
+        month_name = obj.created_at.strftime('%B')
+        return f"{month_name} {obj.year}"
+
+    def get_date_range(self, obj):
+        month = obj.month
+        year = obj.year
+        _, last_day = calendar.monthrange(year, month)
+        start = datetime(year, month, 1).strftime("%B 1, %Y")
+        end = datetime(year, month, last_day).strftime("%B %d, %Y")
+        return f"{start} - {end}"
+
+    def get_url_view(self, obj):
+        return obj.file_url  # You can customize if there's a separate view URL
+
+    def get_url_download(self, obj):
+        return obj.file_url  # Or different download link
+
