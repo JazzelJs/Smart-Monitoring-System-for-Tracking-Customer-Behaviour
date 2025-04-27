@@ -15,6 +15,7 @@ from datetime import timedelta, datetime
 from .models import Report, UserCafe
 from .serializers import ReportSerializer
 from django.utils.dateparse import parse_date
+from .report_generator import generate_pdf_for_month
 
 import calendar
 
@@ -298,14 +299,14 @@ def visitor_traffic(request):
         # Past 7 days, group by day
         start_time = now_time - timedelta(days=6)
         entries = EntryEvent.objects.filter(event_type='enter', timestamp__date__gte=start_time.date())
-        data = entries.annotate(day=TruncDate('timestamp')).values('day').annotate(count=Count('id')).order_by('day')
+        data = entries.annotate(day=TruncDate('timestamp'),  tzinfo=timezone.get_current_timezone_name()).values('day').annotate(count=Count('id')).order_by('day'),  
         result = [{"label": d['day'].strftime('%A'), "count": d['count']} for d in data]
 
     elif mode == 'monthly':
         # Last 4 weeks, group by week
         start_time = now_time - timedelta(weeks=4)
         entries = EntryEvent.objects.filter(event_type='enter', timestamp__gte=start_time)
-        data = entries.annotate(week=TruncWeek('timestamp')).values('week').annotate(count=Count('id')).order_by('week')
+        data = entries.annotate(week=TruncWeek('timestamp'),  tzinfo=timezone.get_current_timezone_name()).values('week').annotate(count=Count('id')).order_by('week')
         result = [{"label": d['week'].strftime('Week %W'), "count": d['count']} for d in data]
 
     else:
@@ -569,6 +570,9 @@ def detection_status(request):
 
 from django.db.models.functions import TruncDay, TruncHour, TruncMonth
 from dateutil.relativedelta import relativedelta
+from django.utils.timezone import make_aware
+
+
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -580,25 +584,35 @@ def monthly_report_summary(request, year, month):
     cameras = Camera.objects.filter(cafe__in=cafes)
     now = timezone.now()
 
-    start = datetime(year, month, 1, tzinfo=timezone.get_current_timezone())
-    end = (start + relativedelta(months=1)) - timedelta(seconds=1)
-    prev_start = start - relativedelta(months=1)
-    prev_end = start - timedelta(seconds=1)
+    start = make_aware(datetime(year, month, 1))
+    end = make_aware((datetime(year, month, 1) + relativedelta(months=1)) - timedelta(seconds=1))
+    prev_start = make_aware(datetime(year, month, 1) - relativedelta(months=1))
+    prev_end = make_aware(datetime(year, month, 1) - timedelta(seconds=1))
+
 
     # === TOTAL VISITORS ===
     total_visitors = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)).count()
 
     # === PEAK HOUR ===
     hourly_data = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)) \
-        .annotate(hour=TruncHour('timestamp')) \
+        .annotate(hour=TruncHour('timestamp'),  tzinfo=timezone.get_current_timezone_name()) \
         .values('hour').annotate(count=Count('id')).order_by('-count')
     peak = hourly_data.first()
     peak_hour = f"{peak['hour'].hour:02d}:00 - {peak['hour'].hour+1:02d}:00" if peak else "-"
 
     # === RETURNING CUSTOMERS ===
-    customer_ids = EntryEvent.objects.filter(camera__in=cameras, timestamp__range=(start, end)).values_list('customer_id', flat=True).distinct()
-    returning_customers = Customer.objects.filter(id__in=customer_ids, status='returning').count()
-    returning_percentage = (returning_customers / len(customer_ids)) * 100 if customer_ids else 0
+    customer_ids = EntryEvent.objects.filter(camera__in=cameras, timestamp__range=(start, end)) \
+        .values_list('customer_id', flat=True).distinct()
+
+    returning_customers = Customer.objects.filter(customer_id__in=customer_ids, status='returning').count()
+    returning_percentage = (returning_customers / customer_ids.count()) * 100 if customer_ids else 0
+
+    # === CUSTOMER BREAKDOWN ===
+    first_time = Customer.objects.filter(customer_id__in=customer_ids, status='new').count()
+    breakdown = {
+        "first_time": first_time,
+        "returning": returning_customers
+    }
 
     # === AVERAGE DURATION ===
     detections = SeatDetection.objects.filter(camera__in=cameras, time_start__range=(start, end)).exclude(time_end__isnull=True)
@@ -609,7 +623,7 @@ def monthly_report_summary(request, year, month):
     # === DAILY TRAFFIC (THIS vs LAST MONTH) ===
     def get_daily_traffic(start, end):
         return EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)) \
-            .annotate(day=TruncDay('timestamp')) \
+            .annotate(day=TruncDay('timestamp'),  tzinfo=timezone.get_current_timezone_name()) \
             .values('day').annotate(count=Count('id')).order_by('day')
 
     daily_this = list(get_daily_traffic(start, end))
@@ -627,7 +641,7 @@ def monthly_report_summary(request, year, month):
     # === MONTHLY TRENDS (LAST 6 MONTHS) ===
     trends_start = now - relativedelta(months=6)
     monthly_trends = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__gte=trends_start) \
-        .annotate(month=TruncMonth('timestamp')) \
+        .annotate(month=TruncMonth('timestamp'),  tzinfo=timezone.get_current_timezone_name()) \
         .values('month').annotate(count=Count('id')).order_by('month')
 
     # === MOST POPULAR SEAT (THIS vs LAST MONTH) ===
@@ -638,13 +652,6 @@ def monthly_report_summary(request, year, month):
 
     popular_this = get_popular_seat(start, end)
     popular_last = get_popular_seat(prev_start, prev_end)
-
-    # === CUSTOMER BREAKDOWN ===
-    first_time = Customer.objects.filter(id__in=customer_ids, status='new').count()
-    breakdown = {
-        "first_time": first_time,
-        "returning": returning_customers
-    }
 
     return Response({
         "total_visitors": total_visitors,
@@ -666,6 +673,7 @@ def monthly_report_summary(request, year, month):
         },
         "customer_breakdown": breakdown
     })
+
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -695,4 +703,39 @@ def historical_reports(request):
 
 
 
+class GenerateReportView(APIView):
+    def post(self, request):
+        user = request.user
+        cafe = UserCafe.objects.get(user=user)
 
+        year = int(request.data.get("year"))
+        month = int(request.data.get("month"))
+
+        if Report.objects.filter(cafe=cafe, year=year, month=month).exists():
+            return Response({"error": "Report already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate PDF (return file URL)
+        file_url = generate_pdf_for_month(cafe, year, month)
+
+        # Save Report
+        report = Report.objects.create(cafe=cafe, year=year, month=month, file_url=file_url)
+        return Response({"status": "success", "report_id": report.id}, status=status.HTTP_201_CREATED)
+
+
+class ReportListView(APIView):
+    def get(self, request):
+        user = request.user
+        cafe = UserCafe.objects.get(user=user)
+        reports = Report.objects.filter(cafe=cafe).order_by('-year', '-month')
+
+        data = [
+            {
+                "id": report.id,
+                "year": report.year,
+                "month": report.month,
+                "file_url": report.file_url,
+                "created_at": report.created_at
+            }
+            for report in reports
+        ]
+        return Response(data)

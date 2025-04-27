@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework_simplejwt',
+     #'django_crontab',
     'corsheaders',
     'rest_framework',
     'backend_app'
@@ -180,3 +181,7 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # or hardcode
 
 USE_TZ = True
 TIME_ZONE = 'Asia/Jakarta'  # Or whatever timezone you want
+
+CRONJOBS = [
+    ('0 0 1 * *', 'django.core.management.call_command', ['generate_monthly_reports']),
+]

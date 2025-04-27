@@ -186,8 +186,15 @@ class Report(models.Model):
     cafe = models.ForeignKey(UserCafe, on_delete=models.CASCADE, related_name="reports")
     year = models.IntegerField()
     month = models.IntegerField()
-    file_url = models.URLField(null=True, blank=True)  # Add this to store the PDF link
+    file_url = models.URLField(null=True, blank=True)  # Optional PDF
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('cafe', 'year', 'month')  # Ensure one report per month
+
+    def __str__(self):
+        return f"Report {self.year}-{self.month} for {self.cafe.name}"
+
 
     def __str__(self):
         return f"Report {self.year}-{self.month} for {self.cafe.name}"

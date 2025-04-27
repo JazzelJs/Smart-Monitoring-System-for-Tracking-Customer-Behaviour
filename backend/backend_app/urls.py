@@ -18,8 +18,8 @@ from .views import (
     start_detection_view, stop_detection_view,
     reset_chair_cache, chair_occupancy_view,
     update_hourly_entry_summary, SeatDetectionListCreateView, SeatDetectionUpdateView,
-    EntryEventListCreateView, get_entry_state, video_feed,
-    seat_summary_analytics, peak_hour_analytics, visitor_traffic, customer_analytics, detection_status, activity_log, monthly_report_summary, historical_reports
+    EntryEventListCreateView, GenerateReportView, ReportListView, get_entry_state, video_feed,
+    seat_summary_analytics, peak_hour_analytics, visitor_traffic, customer_analytics, detection_status, activity_log, monthly_report_summary, historical_reports, 
 )
 
 urlpatterns = [
@@ -75,6 +75,8 @@ urlpatterns = [
     # Reports
      path('analytics/monthly-report/<int:year>/<int:month>/', monthly_report_summary),
      path('historical-data/reports/', historical_reports),
+     path('reports/generate/', GenerateReportView.as_view(), name='generate_report'),
+    path('reports/', ReportListView.as_view(), name='report_list'),  # For listing reports
 ]
 
 # Serve media files if in DEBUG mode
