@@ -82,7 +82,7 @@ def get_side_of_line(p1, p2, point):
 def run_detection():
     global running, active_detections
     running = True
-    cap = cv2.VideoCapture("D:/Kuliah/Tugas Akhir/Coding Udemy/Testing Faces/cctv_vids/vid1.mp4")
+    cap = cv2.VideoCapture("D:/Kuliah/Tugas Akhir/Coding Udemy/Testing Faces/cctv_vids/vid5.mp4")
     frame_count = 0
     registered_chairs = {}
     person_memory = {}

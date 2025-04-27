@@ -9,7 +9,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count, Avg, F, ExpressionWrapper, DurationField
-from django.db.models.functions import TruncDate, TruncWeek, ExtractHour
+from django.db.models.functions import TruncDate, TruncWeek, ExtractHour, ExtractWeekDay
 from collections import defaultdict
 from datetime import timedelta, datetime
 from .models import Report, UserCafe
@@ -299,14 +299,14 @@ def visitor_traffic(request):
         # Past 7 days, group by day
         start_time = now_time - timedelta(days=6)
         entries = EntryEvent.objects.filter(event_type='enter', timestamp__date__gte=start_time.date())
-        data = entries.annotate(day=TruncDate('timestamp'),  tzinfo=timezone.get_current_timezone_name()).values('day').annotate(count=Count('id')).order_by('day'),  
+        data = entries.annotate(day=TruncDate('timestamp',tzinfo=timezone.get_current_timezone())).values('day').annotate(count=Count('id')).order_by('day'),  
         result = [{"label": d['day'].strftime('%A'), "count": d['count']} for d in data]
 
     elif mode == 'monthly':
         # Last 4 weeks, group by week
         start_time = now_time - timedelta(weeks=4)
         entries = EntryEvent.objects.filter(event_type='enter', timestamp__gte=start_time)
-        data = entries.annotate(week=TruncWeek('timestamp'),  tzinfo=timezone.get_current_timezone_name()).values('week').annotate(count=Count('id')).order_by('week')
+        data = entries.annotate(week=TruncWeek('timestamp', tzinfo=timezone.get_current_timezone())).values('week').annotate(count=Count('id')).order_by('week')
         result = [{"label": d['week'].strftime('Week %W'), "count": d['count']} for d in data]
 
     else:
@@ -595,7 +595,7 @@ def monthly_report_summary(request, year, month):
 
     # === PEAK HOUR ===
     hourly_data = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)) \
-        .annotate(hour=TruncHour('timestamp'),  tzinfo=timezone.get_current_timezone_name()) \
+        .annotate(hour=TruncHour('timestamp', tzinfo=timezone.get_current_timezone())) \
         .values('hour').annotate(count=Count('id')).order_by('-count')
     peak = hourly_data.first()
     peak_hour = f"{peak['hour'].hour:02d}:00 - {peak['hour'].hour+1:02d}:00" if peak else "-"
@@ -621,19 +621,53 @@ def monthly_report_summary(request, year, month):
     avg_duration_str = f"{avg_duration.seconds // 3600} H {((avg_duration.seconds // 60) % 60)} M" if avg_duration else "0 H 0 M"
 
     # === DAILY TRAFFIC (THIS vs LAST MONTH) ===
+    cameras = Camera.objects.filter(cafe__in=cafes)
+
     def get_daily_traffic(start, end):
-        return EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)) \
-            .annotate(day=TruncDay('timestamp'),  tzinfo=timezone.get_current_timezone_name()) \
-            .values('day').annotate(count=Count('id')).order_by('day')
+        # Step 1: Query visitor counts grouped by day of week (1=Sunday, ..., 7=Saturday)
+        data = EntryEvent.objects.filter(
+            camera__in=cameras,
+            event_type="enter",
+            timestamp__range=(start, end)
+        ).annotate(day=ExtractWeekDay('timestamp',  tzinfo=timezone.get_current_timezone())).values('day').annotate(count=Count('id'))
+
+        # Step 2: Map Django day numbers to labels (Monday-Sunday order)
+        day_map = {1: 'Sun', 2: 'Mon', 3: 'Tue', 4: 'Wed', 5: 'Thu', 6: 'Fri', 7: 'Sat'}
+
+        # Step 3: Ensure all days exist and ordered Mon-Sun
+        ordered_days = []
+        for i in range(2, 8):  # Monday (2) to Saturday (7)
+            count = next((item['count'] for item in data if item['day'] == i), 0)
+            ordered_days.append({'day': day_map[i], 'count': count})
+        # Add Sunday (1) at the end
+        sunday_count = next((item['count'] for item in data if item['day'] == 1), 0)
+        ordered_days.append({'day': 'Sun', 'count': sunday_count})
+
+        return ordered_days
 
     daily_this = list(get_daily_traffic(start, end))
     daily_last = list(get_daily_traffic(prev_start, prev_end))
 
     # === HOURLY TRAFFIC (THIS vs LAST MONTH) ===
     def get_hourly_traffic(start, end):
-        return EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)) \
-            .annotate(hour=ExtractHour('timestamp')) \
-            .values('hour').annotate(count=Count('id')).order_by('hour')
+        raw_data = EntryEvent.objects.filter(
+            camera__in=cameras,
+            event_type="enter",
+            timestamp__range=(start, end)
+        ).annotate(hour=ExtractHour('timestamp',  tzinfo=timezone.get_current_timezone())).values('hour').annotate(count=Count('id')).order_by('hour')
+
+        # Prepare a full list of 24 hours (0-23)
+        full_hours = []
+        data_dict = {item['hour']: item['count'] for item in raw_data}
+
+        for hour in range(24):
+            label = f"{hour:02d}:00 - {hour+1:02d}:00"
+            count = data_dict.get(hour, 0)  # Default to 0 if no data for that hour
+            full_hours.append({'hour': label, 'count': count})
+
+        return full_hours
+
+
 
     hourly_this = list(get_hourly_traffic(start, end))
     hourly_last = list(get_hourly_traffic(prev_start, prev_end))
@@ -641,7 +675,7 @@ def monthly_report_summary(request, year, month):
     # === MONTHLY TRENDS (LAST 6 MONTHS) ===
     trends_start = now - relativedelta(months=6)
     monthly_trends = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__gte=trends_start) \
-        .annotate(month=TruncMonth('timestamp'),  tzinfo=timezone.get_current_timezone_name()) \
+        .annotate(month=TruncMonth('timestamp', tzinfo=timezone.get_current_timezone())) \
         .values('month').annotate(count=Count('id')).order_by('month')
 
     # === MOST POPULAR SEAT (THIS vs LAST MONTH) ===
