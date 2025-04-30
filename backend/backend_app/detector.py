@@ -12,6 +12,7 @@ from django.utils.timezone import make_aware
 import backend_app.shared_video as shared_video
 import pickle
 
+
 # === Django setup ===
 sys.path.append("D:/Kuliah/Tugas Akhir/TheTugasFinal/backend")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
@@ -33,6 +34,7 @@ running = False
 # === Redis and YOLO model ===
 redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 model = YOLO("D:/Kuliah/Tugas Akhir/TheTugasFinal/models/detection_models/best.pt")
+stream_url = "D:/Kuliah/Tugas Akhir/Coding Udemy/Testing Faces/cctv_vids/vid1.mp4"
 
 # === Parameters ===
 CONFIDENCE_THRESHOLD = 0.2
@@ -82,7 +84,7 @@ def get_side_of_line(p1, p2, point):
 def run_detection():
     global running, active_detections
     running = True
-    cap = cv2.VideoCapture("D:/Kuliah/Tugas Akhir/Coding Udemy/Testing Faces/cctv_vids/vid5.mp4")
+    cap = cv2.VideoCapture(stream_url)
     frame_count = 0
     registered_chairs = {}
     person_memory = {}
@@ -239,7 +241,7 @@ def run_detection():
 
         with shared_video.video_lock:
             shared_video.latest_frame = resized_frame.copy()
-        time.sleep(1)
+        time.sleep(0.01)
 
     cap.release()
     print("[YOLO] Detection loop stopped cleanly.")

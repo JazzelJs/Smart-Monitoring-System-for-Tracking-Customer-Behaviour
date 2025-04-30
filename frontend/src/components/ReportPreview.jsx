@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import html2canvas from "html2canvas-pro";
-
 import jsPDF from "jspdf";
 import api from "../api";
 import {
@@ -23,34 +22,38 @@ export default function ReportPreview({ year, month, onClose }) {
       console.error("reportRef is null!");
       return;
     }
-  
+
     const canvas = await html2canvas(input, { scale: 2 }); // Higher scale = better quality
     const imgData = canvas.toDataURL("image/png");
-  
+
     const pdf = new jsPDF("p", "mm", "a4");
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
-  
+
     const imgWidth = pdfWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
-  
+
     let heightLeft = imgHeight;
     let position = 0;
-  
+
     pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
     heightLeft -= pdfHeight;
-  
+
     while (heightLeft > 0) {
       position -= pdfHeight;
       pdf.addPage();
       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
       heightLeft -= pdfHeight;
     }
-  
+
     pdf.save(`report_${year}_${month}_preview.pdf`);
   };
-  
-  
+
+  const monthName = (year, month) => {
+    const date = new Date(year, month - 1);
+    return date.toLocaleString('default', { month: 'long' });
+  };
+
   // === Merge Functions for Traffic Comparisons ===
   const mergeDailyTraffic = () => {
     const thisMonth = reportData.daily_visitor_traffic.this_month;
@@ -75,30 +78,30 @@ export default function ReportPreview({ year, month, onClose }) {
   const mergeMonthlyTrends = () => {
     return reportData.monthly_visitor_trends.map((item) => {
       const date = new Date(item.month);
-      const monthName = date.toLocaleString('default', { month: 'short' }); // e.g., "Feb"
-
+      const mName = date.toLocaleString('default', { month: 'short' });
       return {
-        month: monthName,
-        this_month: (monthName === "Mar") ? item.count : 0,
-        last_month: (monthName === "Feb") ? item.count : 0,
+        month: mName,
+        this_month: (mName === "Mar") ? item.count : 0,
+        last_month: (mName === "Feb") ? item.count : 0,
       };
     });
   };
-
 
   if (!reportData) return <p className="text-center">Loading report...</p>;
 
   return (
     <div>
       <div className="flex justify-between mb-4">
-        <h2 className="text-3xl font-bold">{`March ${year} Reports`}</h2>
+        <div>
+          <h2 className="text-3xl font-bold">{`${monthName(year, month)} ${year} Reports`}</h2>
+          <p className="text-gray-600">{`Café: ${reportData.cafe_name || "N/A"}`}</p> {/* Add Cafe Name */}
+          <p className="text-gray-500">Generated on: {new Date().toLocaleDateString()}</p>
+        </div>
         <div className="flex gap-2">
           <button className="bg-red-500 text-white px-4 py-1 rounded" onClick={onClose}>Close</button>
           <button className="bg-blue-600 text-white px-4 py-1 rounded" onClick={downloadPDF}>Download PDF</button>
         </div>
       </div>
-
-      <p className="mb-4 text-gray-600">Generated on: {new Date().toLocaleDateString()}</p>
 
       <div ref={reportRef} className="bg-gray-50 p-6 rounded-xl shadow space-y-6">
         {/* Summary Cards */}
@@ -117,7 +120,6 @@ export default function ReportPreview({ year, month, onClose }) {
               <YAxis />
               <Tooltip />
               <Legend />
-
               <Bar dataKey="last_month" fill="#494548" name="February" />
               <Bar dataKey="this_month" fill="#FF9500" name="March" />
             </BarChart>
@@ -132,14 +134,13 @@ export default function ReportPreview({ year, month, onClose }) {
               <YAxis />
               <Tooltip />
               <Legend />
-
               <Line type="monotone" dataKey="last_month" stroke="#494548" strokeWidth={2} name="February" />
               <Line type="monotone" dataKey="this_month" stroke="#FF9500" strokeWidth={2} name="March" />
             </LineChart>
           </ResponsiveContainer>
         </ChartBlock>
 
-        // Monthly Trends Chart
+        {/* Monthly Trends */}
         <ChartBlock title="Monthly Visitor Trends">
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={mergeMonthlyTrends()}>

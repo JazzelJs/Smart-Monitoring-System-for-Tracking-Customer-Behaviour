@@ -155,7 +155,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -180,7 +180,7 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # or hardcode temporarily
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # or hardcode
 
 USE_TZ = True
-TIME_ZONE = 'Asia/Jakarta'  # Or whatever timezone you want
+TIME_ZONE = 'Asia/Jakarta'  # Timezone now
 
 CRONJOBS = [
     ('0 0 1 * *', 'django.core.management.call_command', ['generate_monthly_reports']),

@@ -1,77 +1,94 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { clearTokens } from '../utils/auth';
+import React, { useEffect, useState } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import api from '../api';
+import Navbar from '../components/Navbar';
 
-function HomePage() {
+export default function HomePage() {
   const navigate = useNavigate();
+  const [seatSummary, setSeatSummary] = useState(null);
+  const [customerStats, setCustomerStats] = useState(null);
+  const [chairs, setChairs] = useState({});
+  const [peakStats, setPeakStats] = useState(null);
+
+  useEffect(() => {
+    api.get('/analytics/seats/summary/').then(res => setSeatSummary(res.data));
+    api.get('/analytics/customers/').then(res => setCustomerStats(res.data));
+    api.get('/chair-occupancy/').then(res => setChairs(res.data.chairs || {}));
+    api.get('/analytics/peak-hours/').then(res => setPeakStats(res.data));
+  }, []);
+
+  const occupiedCount = Object.values(chairs).filter(seat => seat.status === 'occupied').length;
+  const totalCount = Object.values(chairs).length;
 
   const handleLogout = () => {
-    clearTokens();
+    localStorage.clear();
     navigate('/login');
   };
 
-  const handleGoToAnalytics = () => {
-    navigate('/analytics/seats');
-  };
-
-  const handleGoToManageCamera = () => {
-    navigate('/settings/manage-camera');
-  }
-
-  const handleGoToActivityLog = () => {
-    navigate('/activity-log');
-  }
-
-  const handleGoToHistoricalData = () => {
-    navigate('/historical-data');
-  };
-
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white text-[#262626] space-y-6">
-      <h1 className="text-3xl font-bold">Welcome 🎉</h1>
-      <p className="text-[#494548] text-lg">You're successfully logged in.</p>
+    <div className="min-h-screen bg-gray-50 font-sans">
+      {/* Navbar */}
+      <Navbar/>
 
-      <button
-        onClick={handleGoToAnalytics}
-        className="bg-blue-600 px-4 py-2 text-white rounded hover:bg-blue-700 font-semibold"
-      >
-        Go to Seat Analytics
-      </button>
+      {/* Main Content */}
+      <div className="p-8">
+        <h1 className="text-3xl font-bold mb-8">Overview - Ngopi Pintar</h1>
 
-      <button
-        onClick={handleGoToActivityLog}
-        className="bg-blue-600 px-4 py-2 text-white rounded hover:bg-blue-700 font-semibold"
-      >
-        Go to Activity Log
-      </button>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          <Card 
+            title="Occupied Seats" 
+            value={`${occupiedCount} / ${totalCount}`} 
+            subtitle="Currently" 
+            onArrowClick={() => navigate('/analytics/seats')} 
+          />
+          <Card 
+            title="Average Seating Time" 
+            value={seatSummary?.average_duration ? `${Math.floor(seatSummary.average_duration / 60)} H ${seatSummary.average_duration % 60} M` : '-'} 
+            subtitle="During the last month" 
+            onArrowClick={() => navigate('/analytics/seats')} 
+          />
+          <Card 
+            title="Peak Hours" 
+            value={peakStats?.peak_hour || '-'} 
+            subtitle="This Month" 
+            onArrowClick={() => navigate('/analytics/peak-hours')} 
+          />
+          <Card 
+            title="Returning Customers" 
+            value={`${customerStats?.returning_customers_percentage || 0}%`} 
+            subtitle="This Month" 
+            onArrowClick={() => navigate('/analytics/customers')} 
+          />
+        </div>
 
-
-
-      <button
-        onClick={handleGoToHistoricalData}
-        className="bg-blue-600 px-4 py-2 text-white rounded hover:bg-blue-700 font-semibold"
-      >
-        Go to Historical Data
-      </button>
-
-      <button
-        onClick={handleGoToManageCamera}
-        className="bg-blue-600 px-4 py-2 text-white rounded hover:bg-blue-700 font-semibold"
-      >
-        Go to Camera Management
-      </button>
-
-
-      
-
-      <button
-        onClick={handleLogout}
-        className="bg-[#FF9500] px-4 py-2 text-white rounded hover:bg-orange-600 font-semibold"
-      >
-        Logout
-      </button>
+        {/* Live Video Feeds */}
+        <div>
+          <h2 className="text-xl font-bold mb-4">Live Video Feeds</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[1, 2, 3, 4].map((_, i) => (
+              <div key={i} className="bg-gray-300 h-48 rounded flex items-center justify-center">
+                <button className="text-white bg-black rounded-full p-2">▶</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default HomePage;
+function Card({ title, value, subtitle, onArrowClick }) {
+  return (
+    <div className="bg-white p-6 rounded-xl shadow flex flex-col justify-between">
+      <div>
+        <p className="text-sm text-gray-500">{title}</p>
+        <h2 className="text-3xl font-bold text-orange-500">{value}</h2>
+        <p className="text-xs text-gray-400">{subtitle}</p>
+      </div>
+      <div className="flex justify-end mt-4">
+        <button onClick={onArrowClick} className="text-orange-500 text-sm hover:underline">↗</button>
+      </div>
+    </div>
+  );
+}

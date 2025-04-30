@@ -53,6 +53,8 @@ export default function HistoricalDataPage() {
   };
 
   return (
+
+    
     <div className="p-8 bg-gray-50 min-h-screen">
       <h1 className="text-4xl font-bold mb-6">Historical Data</h1>
       <p className="text-gray-500 mb-8">View and generate historical analytics reports</p>
@@ -120,5 +122,6 @@ export default function HistoricalDataPage() {
         </div>
       )}
     </div>
+    
   );
 }

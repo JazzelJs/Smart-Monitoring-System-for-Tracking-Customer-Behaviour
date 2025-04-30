@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api, { API_BASE_URL } from "../api";
 import AnalyticsTabs from '../components/AnalyticsTabs';
+import Navbar from '../components/Navbar';
 
 export default function AnalyticsPage() {
   const [summary, setSummary] = useState(null);
@@ -141,7 +142,13 @@ export default function AnalyticsPage() {
 
 
   return (
+
+    <div className="min-h-screen bg-gray-50 font-sans">
+          {/* Navbar */}
+          <Navbar/>
     <div className="p-8 bg-gray-50 min-h-screen font-sans">
+  
+
       <h1 className="text-4xl font-bold mb-6">Analytics</h1>
 
       {/* Detection Controls */}
@@ -296,5 +303,6 @@ export default function AnalyticsPage() {
 </div>
 
     </div>
+  </div>
   );
 }

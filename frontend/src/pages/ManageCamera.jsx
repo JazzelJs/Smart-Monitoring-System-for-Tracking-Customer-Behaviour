@@ -145,8 +145,10 @@ const ManageCameras = () => {
   }, []);
 
   return (
+    
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
+        
         <div>
           <h2 className="text-xl font-semibold">Manage Cameras</h2>
           <p className="text-gray-500 text-sm">View and manage connected CCTV cameras</p>
