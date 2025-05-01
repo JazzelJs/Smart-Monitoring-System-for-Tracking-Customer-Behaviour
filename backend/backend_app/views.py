@@ -192,10 +192,10 @@ def seat_summary_analytics(request):
     detections = SeatDetection.objects.filter(
         camera__in=cameras,
         time_start__gte=month_start
-    )
+    ).select_related('seat')
 
     # Most popular seat
-    popular = detections.values("chair_id").annotate(
+    popular = detections.values("seat__seat_id").annotate(
         count=Count("id")
     ).order_by("-count").first()
 
@@ -207,23 +207,22 @@ def seat_summary_analytics(request):
     # Longest completed session
     annotated = detections.exclude(time_end__isnull=True).annotate(
         duration=ExpressionWrapper(F("time_end") - F("time_start"), output_field=DurationField())
-    )
+    ).select_related('seat')
+
     longest = annotated.order_by("-duration").first()
 
     # Longest ongoing session
     ongoing = detections.filter(time_end__isnull=True).annotate(
         current_duration=ExpressionWrapper(timezone.now() - F("time_start"), output_field=DurationField())
-    ).order_by("-current_duration").first()
+    ).select_related('seat').order_by("-current_duration").first()
 
     return Response({
-        "most_popular_seat": f"Chair {popular['chair_id']}" if popular else None,
+        "most_popular_seat": f"Chair {popular['seat__seat_id']}" if popular else "-",
         "average_duration": round(avg_duration.total_seconds() / 60) if avg_duration else 0,
-        "longest_session_table": f"Chair {longest.chair_id}" if longest else None,
+        "longest_session_table": f"Chair {longest.seat.seat_id}" if longest else "-",
         "longest_session_duration": round(longest.duration.total_seconds() / 60) if longest else 0,
-        "longest_current_stay": f"Chair {ongoing.chair_id}" if ongoing else None
-
+        "longest_current_stay": f"Chair {ongoing.seat.seat_id}" if ongoing else "-"
     })
-
 
 
 @api_view(['GET'])
@@ -438,21 +437,34 @@ def get_entry_state(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-@csrf_exempt
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def chair_occupancy_view(request):
     try:
-        data = redis_client.get("chair_occupancy")
+        user = request.user
+        cafe = UserCafe.objects.filter(user=user).first()
+        if not cafe:
+            return JsonResponse({"error": "No cafe linked to user"}, status=400)
+
+        data = redis_client.get(f"chair_occupancy:cafe:{cafe.id}")
         return JsonResponse(json.loads(data or '{}'))
     except redis.exceptions.ConnectionError:
         return JsonResponse({"error": "Redis connection failed"}, status=503)
 
 @csrf_exempt
+@permission_classes([permissions.IsAuthenticated])
 def reset_chair_cache(request):
     try:
-        redis_client.delete("cached_chair_positions")
+        user = request.user
+        cafe = UserCafe.objects.filter(user=user).first()
+        if not cafe:
+            return JsonResponse({"error": "No cafe linked to user"}, status=400)
+
+        redis_client.delete(f"cached_chair_positions:cafe:{cafe.id}")
         return JsonResponse({"status": "cache cleared"})
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
 
 
 # === CUSTOMER TRACKING UTILS ===
@@ -525,14 +537,22 @@ def get_camera_streams(request):
     return Response({"streams": streams})
 
 @csrf_exempt
+@api_view(['POST'])  # or ['GET'] depending on your method
+@permission_classes([permissions.IsAuthenticated])
 def start_detection_view(request):
     try:
-        # Check Redis flag first
+        user = request.user
+        cafe = UserCafe.objects.filter(user=user).first()
+
+        if not cafe:
+            return JsonResponse({"error": "No cafe linked to this user."}, status=400)
+
+        redis_client.set("active_cafe_id", cafe.id)  # ✅ Save cafe ID for use in detector
+
         status = redis_client.get("detection_status")
         if status == "running":
             return JsonResponse({"status": "already running"})
 
-        # Start detection process
         started = start_detection()
 
         if started:
@@ -540,11 +560,14 @@ def start_detection_view(request):
             return JsonResponse({"status": "started"})
         else:
             return JsonResponse({"status": "failed to start"}, status=500)
+
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
 
 @csrf_exempt
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def stop_detection_view(request):
     try:
         stop_detection()

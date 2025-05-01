@@ -97,7 +97,7 @@ class Camera(models.Model):
     status = models.CharField(max_length=50, choices=[("active", "Active"), ("inactive", "Inactive")])
     location = models.CharField(max_length=255, null=True, blank=True)
     last_active = models.DateTimeField(null=True, blank=True)
-    channel = models.CharField(max_length=50)
+    channel = models.CharField(max_length=50, null=True, blank=True)
     ip_address = models.GenericIPAddressField()
     admin_name = models.CharField(max_length=100, blank=True)
     admin_password = models.CharField(max_length=100, blank=True)
@@ -120,8 +120,11 @@ class Customer(models.Model):
 
 
 class SeatDetection(models.Model):
-    camera = models.ForeignKey('Camera', on_delete=models.CASCADE, related_name='detections')  # NEW
-    chair_id = models.IntegerField()
+    camera = models.ForeignKey(Camera, on_delete=models.CASCADE, related_name='detections')  # NEW
+    seat = models.ForeignKey(Seat, on_delete=models.CASCADE, related_name='detections')
+    centroid_x = models.IntegerField(null=True, blank=True)
+    centroid_y = models.IntegerField(null=True, blank=True)
+
     time_start = models.DateTimeField()
     time_end = models.DateTimeField(null=True, blank=True)
 
@@ -131,7 +134,7 @@ class SeatDetection(models.Model):
         return None
 
     def __str__(self):
-        return f"Camera {self.camera.id} - Chair {self.chair_id} - {self.time_start.strftime('%Y-%m-%d %H:%M:%S')}"
+        return f"Camera {self.camera.id} - Chair {self.seat.seat_id} - {self.time_start.strftime('%Y-%m-%d %H:%M:%S')}"
 
 
 
