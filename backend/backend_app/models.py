@@ -69,7 +69,7 @@ from django.db import models
 
 class Seat(models.Model):
     seat_id = models.AutoField(primary_key=True)
-    cafe = models.ForeignKey('UserCafe', on_delete=models.CASCADE, related_name="seats")
+    cafe = models.ForeignKey(UserCafe, on_delete=models.CASCADE, related_name="seats")
     last_updated = models.DateTimeField(auto_now=True)
     is_occupied = models.BooleanField(default=False)
     x1 = models.IntegerField()

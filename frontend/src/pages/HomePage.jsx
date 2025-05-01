@@ -52,13 +52,13 @@ export default function HomePage() {
             title="Peak Hours" 
             value={peakStats?.peak_hour || '-'} 
             subtitle="This Month" 
-            onArrowClick={() => navigate('/analytics/peak-hours')} 
+            onArrowClick={() => navigate('/analytics/peak-hour')} 
           />
           <Card 
             title="Returning Customers" 
             value={`${customerStats?.returning_customers_percentage || 0}%`} 
             subtitle="This Month" 
-            onArrowClick={() => navigate('/analytics/customers')} 
+            onArrowClick={() => navigate('/analytics/customer')} 
           />
         </div>
 
