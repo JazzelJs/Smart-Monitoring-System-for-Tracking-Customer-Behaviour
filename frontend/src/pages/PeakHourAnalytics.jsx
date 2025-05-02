@@ -28,44 +28,23 @@ export default function PeakHourAnalytics() {
       });
   }, [mode]);
 
-  return (
-    <div className="p-8 bg-gray-50 min-h-screen font-sans">
-      <h1 className="text-4xl font-bold mb-6">Analytics</h1>
+  const allZero = trafficData.every(d => d.count === 0);
 
+  return (
+    <div className="bg-gray-50 font-sans">
       {/* Tabs */}
-      <div className="flex gap-6 text-lg mb-8">
-        <AnalyticsTabs />
-      </div>
+      <AnalyticsTabs activeTab="PeakHour" />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-10">
-        <div className="bg-white p-6 rounded-xl shadow">
-          <p className="text-sm text-gray-500 mb-2">Peak Time</p>
-          <h2 className="text-2xl font-bold text-orange-500">{stats?.peak_hour || "-"}</h2>
-          <p className="text-xs text-gray-400">{stats?.peak_hour_visitors || 0} Visitors</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl shadow">
-          <p className="text-sm text-gray-500 mb-2">Peak Day</p>
-          <h2 className="text-2xl font-bold text-orange-500">{stats?.peak_day || "-"}</h2>
-          <p className="text-xs text-gray-400">{stats?.peak_day_visitors || 0} Visitors</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl shadow">
-          <p className="text-sm text-gray-500 mb-2">Average Daily Visitors</p>
-          <h2 className="text-2xl font-bold text-orange-500">{stats?.avg_daily_visitors || 0}</h2>
-          <p className="text-xs text-gray-400">Last 7 Days</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl shadow">
-          <p className="text-sm text-gray-500 mb-2">Current Occupancy</p>
-          <h2 className="text-2xl font-bold text-orange-500">
-            {stats ? `${stats.occupancy_percent}%` : "-"}
-          </h2>
-          <p className="text-xs text-gray-400">
-            {stats ? `${stats.occupied_seats}/${stats.total_seats} seats occupied` : "-"}
-          </p>
-        </div>
+        <Card label="Peak Time" value={stats?.peak_hour || "-"} sub={`${stats?.peak_hour_visitors || 0} Visitors`} />
+        <Card label="Peak Day" value={stats?.peak_day || "-"} sub={`${stats?.peak_day_visitors || 0} Visitors`} />
+        <Card label="Average Daily Visitors" value={stats?.avg_daily_visitors || 0} sub="Last 7 Days" />
+        <Card
+          label="Current Occupancy"
+          value={stats ? `${stats.occupancy_percent}%` : "-"}
+          sub={stats ? `${stats.occupied_seats}/${stats.total_seats} seats occupied` : "-"}
+        />
       </div>
 
       {/* Visitor Chart */}
@@ -83,18 +62,35 @@ export default function PeakHourAnalytics() {
           ))}
         </div>
 
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={trafficData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="#8884d8" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        {/* Chart or fallback */}
+        {trafficData.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-gray-400 italic">Loading...</div>
+        ) : allZero ? (
+          <div className="h-64 flex items-center justify-center text-gray-400 italic">No visitors recorded yet.</div>
+        ) : (
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trafficData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="label" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="count" stroke="#8884d8" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function Card({ label, value, sub }) {
+  return (
+    <div className="bg-white p-6 rounded-xl shadow">
+      <p className="text-sm text-gray-500 mb-2">{label}</p>
+      <h2 className="text-2xl font-bold text-orange-500">{value}</h2>
+      <p className="text-xs text-gray-400">{sub}</p>
     </div>
   );
 }

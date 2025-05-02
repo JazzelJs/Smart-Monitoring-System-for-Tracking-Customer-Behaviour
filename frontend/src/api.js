@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { getRefreshToken, saveAccessToken, clearTokens } from './utils/auth';
 
-export const API_BASE_URL = 'http://192.168.1.4:8000/api';
+export const API_BASE_URL = 'http://10.5.48.57:8000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL, //

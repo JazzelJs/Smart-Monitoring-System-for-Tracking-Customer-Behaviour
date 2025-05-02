@@ -72,13 +72,17 @@ class Seat(models.Model):
     cafe = models.ForeignKey(UserCafe, on_delete=models.CASCADE, related_name="seats")
     last_updated = models.DateTimeField(auto_now=True)
     is_occupied = models.BooleanField(default=False)
+    chair_index = models.IntegerField()
     x1 = models.IntegerField()
     y1 = models.IntegerField()
     x2 = models.IntegerField()
     y2 = models.IntegerField()
 
+    class Meta:
+        unique_together = ('cafe', 'seat_id')
     def __str__(self):
         return f"Seat {self.seat_id} in {self.cafe.name}"
+    
 
 
 class Floor(models.Model):

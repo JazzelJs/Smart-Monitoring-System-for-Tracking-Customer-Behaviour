@@ -1,7 +1,7 @@
 import os
 from django.conf import settings
 from datetime import datetime
-from django.db.models import ExpressionWrapper, F, DurationField
+from django.db.models import ExpressionWrapper, F, DurationField,Sum,Avg
 from .models import EntryEvent, SeatDetection
 from reportlab.pdfgen import canvas
 
@@ -23,18 +23,18 @@ def generate_pdf_for_month(cafe, year, month):
     )
 
     durations = detections.annotate(
-        duration=ExpressionWrapper(F('time_end') - F('time_start'), output_field=DurationField())
-    )
+    duration=ExpressionWrapper(F('time_end') - F('time_start'), output_field=DurationField())
+)
 
-    avg_duration = durations.aggregate(avg=F('duration'))['avg'] if durations.exists() else None
+    avg_duration = durations.aggregate(avg=Avg('duration'))['avg'] if durations.exists() else None
 
     # === Popular seat (based on longest total duration) ===
-    from django.db.models import Sum
-    seat_stats = durations.values('chair_id').annotate(
-        total_duration=Sum('duration')
-    ).order_by('-total_duration').first()
 
-    popular_seat = f"Chair {seat_stats['chair_id']}" if seat_stats else "-"
+    seat_stats = durations.values('seat__seat_id').annotate(
+    total_duration=Sum('duration')
+).order_by('-total_duration').first()
+
+    popular_seat = f"Chair {seat_stats['seat__seat_id']}" if seat_stats else "-"
 
     # === Generate PDF ===
     file_name = f"report_{cafe.id}_{year}_{month}.pdf"

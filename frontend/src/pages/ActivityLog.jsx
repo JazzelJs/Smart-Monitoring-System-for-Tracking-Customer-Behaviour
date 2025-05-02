@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from "react";
 import api from "../api";
+import Navbar from "../components/Navbar"; // ✅ Add Navbar
 
 export default function ActivityLogPage() {
   const [logs, setLogs] = useState([]);
   const [filteredLogs, setFilteredLogs] = useState([]);
-  const [filters, setFilters] = useState({ eventType: "", location: "", startDate: "", endDate: "" });
+  const [filters, setFilters] = useState({
+    eventType: "",
+    location: "",
+    startDate: "",
+    endDate: ""
+  });
   const [locations, setLocations] = useState([]);
 
   useEffect(() => {
@@ -12,10 +18,10 @@ export default function ActivityLogPage() {
     fetchLocations();
 
     const interval = setInterval(() => {
-      fetchLogs();  // Auto-refresh every 5 seconds
+      fetchLogs(); // Auto-refresh every 5 seconds
     }, 5000);
 
-    return () => clearInterval(interval);  // Cleanup on unmount
+    return () => clearInterval(interval); // Cleanup on unmount
   }, []);
 
   const fetchLogs = () => {
@@ -49,18 +55,23 @@ export default function ActivityLogPage() {
     }
 
     if (filters.startDate) {
-      filtered = filtered.filter((log) => new Date(log.timestamp) >= new Date(filters.startDate));
+      filtered = filtered.filter(
+        (log) => new Date(log.timestamp) >= new Date(filters.startDate)
+      );
     }
 
     if (filters.endDate) {
-      filtered = filtered.filter((log) => new Date(log.timestamp) <= new Date(filters.endDate));
+      filtered = filtered.filter(
+        (log) => new Date(log.timestamp) <= new Date(filters.endDate)
+      );
     }
 
     setFilteredLogs(filtered);
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 font-sans">
+      <Navbar /> {/* ✅ Use Navbar */}
       <div className="border-b bg-white p-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold">Activity Log</h1>
       </div>
@@ -68,7 +79,7 @@ export default function ActivityLogPage() {
       <div className="flex flex-col md:flex-row p-8 gap-8">
         {/* Filters */}
         <div className="bg-white p-6 rounded-lg shadow w-full md:w-1/4">
-          <h2 className="text-lg font-semibold mb-4">Event Options</h2>
+          <h2 className="text-lg font-semibold mb-4">Event Filters</h2>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium">Event Type</label>
@@ -106,7 +117,9 @@ export default function ActivityLogPage() {
               >
                 <option value="">All</option>
                 {locations.map((loc) => (
-                  <option key={loc.id} value={loc.name}>{loc.name}</option>
+                  <option key={loc.id} value={loc.name}>
+                    {loc.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -120,19 +133,38 @@ export default function ActivityLogPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Timestamp
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Event
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Location
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredLogs.map((log) => (
                   <tr key={log.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(log.timestamp).toLocaleString()}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.event}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.location}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {new Date(log.timestamp).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {log.event}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {log.location}
+                    </td>
                   </tr>
                 ))}
+                {filteredLogs.length === 0 && (
+                  <tr>
+                    <td colSpan="3" className="text-center py-4 text-gray-400">
+                      No activity logs found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

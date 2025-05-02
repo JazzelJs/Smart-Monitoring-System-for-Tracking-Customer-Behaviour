@@ -74,7 +74,9 @@ def save_new_customer(frame, coords):
         feature = recognizer.feature(aligned)
         store_embedding_in_redis(face_id, feature)
 
-    assigned_cafe = UserCafe.objects.first()
+    cafe_id = redis_client.get("active_cafe_id")
+    assigned_cafe = UserCafe.objects.get(id=int(cafe_id)) if cafe_id else UserCafe.objects.first()
+
 
     Customer.objects.create(
         face_id=face_id,

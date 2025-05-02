@@ -16,6 +16,9 @@ from .models import Report, UserCafe
 from .serializers import ReportSerializer
 from django.utils.dateparse import parse_date
 from .report_generator import generate_pdf_for_month
+from .utils import compute_zone_counts
+from django.http import HttpResponse, HttpResponseNotFound
+from django.utils.timezone import get_current_timezone
 
 import calendar
 
@@ -195,7 +198,7 @@ def seat_summary_analytics(request):
     ).select_related('seat')
 
     # Most popular seat
-    popular = detections.values("seat__seat_id").annotate(
+    popular = detections.values("seat__chair_index").annotate(
         count=Count("id")
     ).order_by("-count").first()
 
@@ -217,11 +220,11 @@ def seat_summary_analytics(request):
     ).select_related('seat').order_by("-current_duration").first()
 
     return Response({
-        "most_popular_seat": f"Chair {popular['seat__seat_id']}" if popular else "-",
+        "most_popular_seat": f"Chair {popular['seat__chair_index']}" if popular else "-",
         "average_duration": round(avg_duration.total_seconds() / 60) if avg_duration else 0,
-        "longest_session_table": f"Chair {longest.seat.seat_id}" if longest else "-",
+        "longest_session_table": f"Chair {longest.seat.chair_index}" if longest else "-",
         "longest_session_duration": round(longest.duration.total_seconds() / 60) if longest else 0,
-        "longest_current_stay": f"Chair {ongoing.seat.seat_id}" if ongoing else "-"
+        "longest_current_stay": f"Chair {ongoing.seat.chair_index}" if ongoing else "-"
     })
 
 
@@ -242,7 +245,8 @@ def peak_hour_analytics(request):
     days = set()
 
     for e in entries:
-        hour = e.timestamp.replace(minute=0, second=0, microsecond=0)
+        from django.utils.timezone import localtime
+        hour = localtime(e.timestamp).replace(minute=0, second=0, microsecond=0)
         hour_counts[hour] += 1
 
         day_name = calendar.day_name[e.timestamp.weekday()]
@@ -256,7 +260,8 @@ def peak_hour_analytics(request):
 
     # 🔸 CURRENT OCCUPANCY
     try:
-        redis_data = redis_client.get("chair_occupancy")
+        cafe = UserCafe.objects.filter(user=user).first()
+        redis_data = redis_client.get(f"chair_occupancy:cafe:{cafe.id}")
         data = json.loads(redis_data or '{}')
         chairs = data.get("chairs", {})
         occupied = sum(1 for c in chairs.values() if c["status"] == "occupied")
@@ -279,8 +284,8 @@ def peak_hour_analytics(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def visitor_traffic(request):
 
+def visitor_traffic(request):
     user = request.user
     cafes = UserCafe.objects.filter(user=user)
     cameras = Camera.objects.filter(cafe__in=cafes)
@@ -290,22 +295,50 @@ def visitor_traffic(request):
     if mode == 'daily':
         # Past 1 day, group by hour
         start_time = now_time.replace(hour=0, minute=0, second=0, microsecond=0)
-        entries = EntryEvent.objects.filter(event_type='enter', timestamp__gte=start_time)
-        data = entries.annotate(hour=ExtractHour('timestamp')).values('hour').annotate(count=Count('id')).order_by('hour')
-        result = [{"label": f"{d['hour']:02d}:00", "count": d['count']} for d in data]
+        entries = EntryEvent.objects.filter(
+            camera__in=cameras,
+            event_type='enter',
+            timestamp__gte=start_time
+        )
+
+        # Extract hour (no tzinfo needed for ExtractHour)
+        data = entries.annotate(hour=ExtractHour('timestamp')) \
+                      .values('hour') \
+                      .annotate(count=Count('id')) \
+                      .order_by('hour')
+
+        # Fill in all 24 hours
+        hour_map = {d['hour']: d['count'] for d in data}
+        result = [{"label": f"{h:02d}:00", "count": hour_map.get(h, 0)} for h in range(24)]
 
     elif mode == 'weekly':
-        # Past 7 days, group by day
         start_time = now_time - timedelta(days=6)
-        entries = EntryEvent.objects.filter(event_type='enter', timestamp__date__gte=start_time.date())
-        data = entries.annotate(day=TruncDate('timestamp',tzinfo=timezone.get_current_timezone())).values('day').annotate(count=Count('id')).order_by('day'),  
+        entries = EntryEvent.objects.filter(
+            event_type='enter',
+            camera__in=cameras,
+            timestamp__date__gte=start_time.date()
+        )
+
+        data = entries.annotate(day=TruncDay('timestamp')) \
+                      .values('day') \
+                      .annotate(count=Count('id')) \
+                      .order_by('day')
+
         result = [{"label": d['day'].strftime('%A'), "count": d['count']} for d in data]
 
     elif mode == 'monthly':
-        # Last 4 weeks, group by week
         start_time = now_time - timedelta(weeks=4)
-        entries = EntryEvent.objects.filter(event_type='enter', timestamp__gte=start_time)
-        data = entries.annotate(week=TruncWeek('timestamp', tzinfo=timezone.get_current_timezone())).values('week').annotate(count=Count('id')).order_by('week')
+        entries = EntryEvent.objects.filter(
+            event_type='enter',
+            camera__in=cameras,
+            timestamp__gte=start_time
+        )
+
+        data = entries.annotate(week=TruncWeek('timestamp')) \
+                      .values('week') \
+                      .annotate(count=Count('id')) \
+                      .order_by('week')
+
         result = [{"label": d['week'].strftime('Week %W'), "count": d['count']} for d in data]
 
     else:
@@ -315,8 +348,6 @@ def visitor_traffic(request):
         result = [{"label": "No Data", "count": 0}]
 
     return Response(result)
-
-
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -346,6 +377,24 @@ def customer_analytics(request):
         "retention_rate": round(retention_rate, 2),
         "average_visits": round(avg_visits, 1)
     })
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def detected_customers(request):
+    user = request.user
+    cafes = UserCafe.objects.filter(user=user)
+    customers = Customer.objects.filter(cafe__in=cafes).order_by('-last_visit')[:50]  # Recent 50
+
+    data = [{
+        "face_id": c.face_id,
+        "first_visit": c.first_visit,
+        "last_visit": c.last_visit,
+        "visit_count": c.visit_count,
+        "average_stay": c.average_stay,
+        "status": c.status
+    } for c in customers]
+
+    return Response(data)
 
 # views.py
 from django.http import JsonResponse
@@ -467,6 +516,21 @@ def reset_chair_cache(request):
 
 
 
+@api_view(['GET'])
+def zone_popularity_view(request):
+    year = int(request.GET.get('year', datetime.now().year))
+    month = int(request.GET.get('month', datetime.now().month))
+
+    start = datetime(year, month, 1)
+    if month == 12:
+        end = datetime(year + 1, 1, 1)
+    else:
+        end = datetime(year, month + 1, 1)
+
+    detections = SeatDetection.objects.filter(time_start__gte=start, time_start__lt=end)
+    data = compute_zone_counts(detections)
+    return Response({"year": year, "month": month, "zones": data})
+
 # === CUSTOMER TRACKING UTILS ===
 from .models import Customer
 
@@ -537,24 +601,32 @@ def get_camera_streams(request):
     return Response({"streams": streams})
 
 @csrf_exempt
-@api_view(['POST'])  # or ['GET'] depending on your method
+@api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def start_detection_view(request):
     try:
         user = request.user
         cafe = UserCafe.objects.filter(user=user).first()
-
         if not cafe:
             return JsonResponse({"error": "No cafe linked to this user."}, status=400)
 
-        redis_client.set("active_cafe_id", cafe.id)  # ✅ Save cafe ID for use in detector
+        redis_client.set("active_cafe_id", cafe.id)
 
-        status = redis_client.get("detection_status")
-        if status == "running":
+        source_type = request.data.get("source_type", "camera")
+        redis_client.set("source_type", source_type)
+
+        if source_type == "sample":
+            video_path = request.data.get("video_path", "")
+            redis_client.set("sample_video_path", video_path)
+
+        if source_type == "camera":
+            selected_ids = request.data.get("selected_camera_ids", [])
+            redis_client.set("selected_camera_ids", json.dumps(selected_ids))  # Optional: if needed later
+
+        if redis_client.get("detection_status") == "running":
             return JsonResponse({"status": "already running"})
 
         started = start_detection()
-
         if started:
             redis_client.set("detection_status", "running")
             return JsonResponse({"status": "started"})
@@ -583,6 +655,7 @@ def detection_status(request):
     # Example: use Redis flag or global variable
     status = redis_client.get("detection_status") or "stopped"
     return Response({"is_detecting": status == "running"})
+
 
 
 
@@ -703,9 +776,13 @@ def monthly_report_summary(request, year, month):
 
     # === MOST POPULAR SEAT (THIS vs LAST MONTH) ===
     def get_popular_seat(start, end):
-        result = SeatDetection.objects.filter(camera__in=cameras, time_start__range=(start, end)) \
-            .values('chair_id').annotate(count=Count('id')).order_by('-count').first()
-        return result['chair_id'] if result else None
+        result = SeatDetection.objects.filter(time_start__range=(start, end)) \
+            .values('seat__seat_id') \
+            .annotate(count=Count('id')) \
+            .order_by('-count') \
+            .first()
+        return result['seat__seat_id'] if result else None
+
 
     popular_this = get_popular_seat(start, end)
     popular_last = get_popular_seat(prev_start, prev_end)
@@ -796,3 +873,63 @@ class ReportListView(APIView):
             for report in reports
         ]
         return Response(data)
+    
+
+def snapshot(request):
+    frame = shared_video.latest_frame
+    if frame is not None:
+        _, buffer = cv2.imencode('.jpg', frame)
+        return HttpResponse(buffer.tobytes(), content_type="image/jpeg")
+    return HttpResponseNotFound("No frame available")
+
+
+
+@csrf_exempt
+
+def rtsp_stream(request, camera_id):
+    try:
+        # Get camera object and construct RTSP URL
+        camera = Camera.objects.get(id=camera_id)
+        rtsp_url = f"rtsp://{camera.admin_name}:{camera.admin_password}@{camera.ip_address}/{camera.channel}"
+
+        # Start ffmpeg subprocess
+        command = [
+            "ffmpeg",
+            "-rtsp_transport", "tcp",
+            "-i", rtsp_url,
+            "-f", "mjpeg",
+            "-q:v", "5",
+            "-r", "10",
+            "-"
+        ]
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+        def generate():
+            try:
+                while True:
+                    chunk = process.stdout.read(1024)
+                    if not chunk:
+                        break
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + chunk + b"\r\n"
+            except GeneratorExit:
+                process.kill()
+            finally:
+                process.kill()
+
+        return StreamingHttpResponse(generate(), content_type="multipart/x-mixed-replace; boundary=frame")
+    
+    except Camera.DoesNotExist:
+        return HttpResponseNotFound("Camera not found")
+    except Exception as e:
+        return HttpResponse(f"Error: {str(e)}", status=500)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def user_cafe_view(request):
+    cafe = UserCafe.objects.filter(user=request.user).first()
+    if not cafe:
+        return Response({"error": "Cafe not found"}, status=404)
+    
+    from .serializers import UserCafeDetailSerializer
+    serializer = UserCafeDetailSerializer(cafe)
+    return Response(serializer.data)

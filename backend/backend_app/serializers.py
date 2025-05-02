@@ -73,6 +73,11 @@ class LoginSerializer(serializers.Serializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
+class UserCafeDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserCafe
+        fields = ['id', 'name', 'location', 'capacity']
+
 
 # =====================================================
 # === OTP & PASSWORD RESET

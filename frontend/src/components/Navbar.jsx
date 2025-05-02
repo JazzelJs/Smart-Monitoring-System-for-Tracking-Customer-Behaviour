@@ -13,7 +13,6 @@ export default function Navbar() {
     <nav className="flex justify-between items-center bg-black text-white px-6 py-4">
       <div className="flex gap-6">
         <NavItem to="/dashboard" label="Dashboard" />
-        <NavItem to="/footages" label="Footages" />
         <NavItem to="/historical-data" label="Historical Data" />
         <NavItem to="/activity-log" label="Activity Log" />
         <NavItem to="/settings/manage-camera" label="Settings" />

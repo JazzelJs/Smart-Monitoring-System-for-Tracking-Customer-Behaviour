@@ -9,17 +9,20 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import PeakHourAnalytics from './pages/PeakHourAnalytics';
 import ManageCameras from './pages/ManageCamera';
 import CustomerAnalytics from './pages/CustomerAnalytics';
-import ProtectedRoute from './components/ProtectedRoute';
-import useDetectionStatus from './hooks/UseDetection';
 import ActivityLogPage from './pages/ActivityLog';
 import HistoricalDataPage from './pages/HistoricalData';
+import ProtectedRoute from './components/ProtectedRoute';
+import Layout from './components/Layout';
+import AnalyticsLayout from './components/AnalyticsContainer'; // ✅ NEW
+import ForgotPasswordPage from './pages/ForgotPassword';
+
+import useDetectionStatus from './hooks/UseDetection';
 
 function App() {
-  const isDetecting = useDetectionStatus();  // ⬅️ Add the hook here
+  const isDetecting = useDetectionStatus();
 
   return (
     <Router>
-      {/* Optional: Global UI based on detection */}
       {isDetecting && (
         <div className="fixed top-0 right-0 bg-green-500 text-white px-4 py-2 rounded-bl-xl z-50">
           Detection Running...
@@ -27,84 +30,25 @@ function App() {
       )}
 
       <Routes>
+        {/* Public routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-        {/* After Login */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <HomePage />
-            </ProtectedRoute>
-          }
-        />
+        {/* Protected pages with standard layout */}
+        <Route path="/dashboard" element={<ProtectedRoute><Layout><HomePage /></Layout></ProtectedRoute>} />
+        <Route path="/onboarding" element={<ProtectedRoute><Layout><OnboardingPage /></Layout></ProtectedRoute>} />
+        <Route path="/activity-log" element={<ProtectedRoute><Layout><ActivityLogPage /></Layout></ProtectedRoute>} />
+        <Route path="/historical-data" element={<ProtectedRoute><Layout><HistoricalDataPage /></Layout></ProtectedRoute>} />
+        <Route path="/settings/manage-camera" element={<ProtectedRoute><Layout><ManageCameras /></Layout></ProtectedRoute>} />
 
-        {/* After Signup */}
-        <Route
-          path="/onboarding"
-          element={
-            <ProtectedRoute>
-              <OnboardingPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Analytics */}
-        <Route
-          path="/analytics/seats"
-          element={
-            <ProtectedRoute>
-              <AnalyticsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/analytics/peak-hour"
-          element={
-            <ProtectedRoute>
-              <PeakHourAnalytics />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/analytics/customer"
-          element={
-            <ProtectedRoute>
-              <CustomerAnalytics />
-            </ProtectedRoute>
-          }
-        />
-        {/* Activity Log */}
-        <Route
-          path="/activity-log"
-          element={
-            <ProtectedRoute>
-              <ActivityLogPage />
-            </ProtectedRoute>
-          }
-        />
-
-      {/* Historical Data */}
-      <Route
-          path="/historical-data"
-          element={
-            <ProtectedRoute>
-              <HistoricalDataPage/>
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Manage Camera */}
-        <Route
-          path="/settings/manage-camera"
-          element={
-            <ProtectedRoute>
-              <ManageCameras />
-            </ProtectedRoute>
-          }
-        />
+        {/* 🔁 Analytics Section with persistent video feed */}
+        <Route path="/analytics" element={<ProtectedRoute><AnalyticsLayout /></ProtectedRoute>}>
+          <Route path="seats" element={<AnalyticsPage />} />
+          <Route path="peak-hour" element={<PeakHourAnalytics />} />
+          <Route path="customer" element={<CustomerAnalytics />} />
+        </Route>
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" />} />

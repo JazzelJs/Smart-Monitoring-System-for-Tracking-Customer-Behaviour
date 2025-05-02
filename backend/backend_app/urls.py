@@ -19,7 +19,7 @@ from .views import (
     reset_chair_cache, chair_occupancy_view,
     update_hourly_entry_summary, SeatDetectionListCreateView, SeatDetectionUpdateView,
     EntryEventListCreateView, GenerateReportView, ReportListView, get_entry_state, video_feed,
-    seat_summary_analytics, peak_hour_analytics, visitor_traffic, customer_analytics, detection_status, activity_log, monthly_report_summary, historical_reports, 
+    seat_summary_analytics,rtsp_stream, user_cafe_view, peak_hour_analytics, visitor_traffic, customer_analytics, detection_status, activity_log, monthly_report_summary, historical_reports, detected_customers, 
 )
 
 urlpatterns = [
@@ -42,16 +42,23 @@ urlpatterns = [
     path('cameras/', CameraCreateView.as_view(), name='create-camera'),
     path('cameras/list/', CameraListView.as_view(), name='list-camera'),
     path('cameras/<int:pk>/', CameraDetailView.as_view(), name='camera-detail'),
+    path('stream/<int:camera_id>/', rtsp_stream, name='rtsp_stream'),
+    
 
     # === Detection Control ===
     path('analytics/start-detection/', start_detection_view, name='start-detection'),
     path('analytics/stop-detection/', stop_detection_view, name='stop-detection'),
     #path('analytics/detection-status/', get_detection_status, name='detection-status'),
+    path('analytics/customers/list/', detected_customers),
+    path("cafes/user/", user_cafe_view), 
+
 
     # === Seat Analytics ===
     path('analytics/seats/summary/', seat_summary_analytics, name='seat-summary'),
     path('analytics/peak-hours/', peak_hour_analytics),
     path('analytics/customers/', customer_analytics, name='customer-analytics'),
+    #path("snapshot/", snapshot, name="snapshot"),
+
 
 
     # === Real-time Chair Status ===
@@ -65,6 +72,7 @@ urlpatterns = [
     path('analytics/visitor-traffic/', visitor_traffic, name='visitor-traffic'),
     path('analytics/detection-status/', detection_status, name='detection-status'),
     path('analytics/activity-log/', activity_log, name ='activity-log'),
+    #path("analytics/popular-zones/", zone_popularity_view),
     # === Seat Detection DB ===
     path('seats/', SeatDetectionListCreateView.as_view(), name='seat-detections'),
     path('seats/<int:pk>/', SeatDetectionUpdateView.as_view(), name='update-seat'),

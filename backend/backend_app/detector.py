@@ -31,7 +31,10 @@ running = False
 # === Redis and YOLO model ===
 redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 model = YOLO("D:/Kuliah/Tugas Akhir/TheTugasFinal/models/detection_models/best.pt")
-stream_url = "D:/Kuliah/Tugas Akhir/Coding Udemy/Testing Faces/cctv_vids/vid1.mp4"
+
+# Get from Redis
+
+
 
 # === Parameters ===
 CONFIDENCE_THRESHOLD = 0.2
@@ -81,18 +84,51 @@ def run_detection():
     global running, active_detections
     running = True
 
-    # Get active cafe from Redis
     cafe_id = redis_client.get("active_cafe_id")
-    if not cafe_id:
-        print("[ERROR] No active cafe ID found in Redis.")
-        return
+    source_type = redis_client.get("source_type") or "camera"
 
-    selected_camera = Camera.objects.filter(cafe_id=cafe_id, status="active").first()
-    if not selected_camera:
-        print(f"[ERROR] No active camera found for cafe {cafe_id}.")
-        return
+    from backend_app.models import UserCafe, Floor
+
+    if source_type == "sample":
+        stream_url = redis_client.get("sample_video_path") or "D:/default_sample.mp4"
+
+        # Fallback cafe
+        cafe = UserCafe.objects.filter(id=cafe_id).first()
+        if not cafe:
+            print("[ERROR] Cafe not found.")
+            return
+
+        # Try to get or create a Camera for video source
+        selected_camera, _ = Camera.objects.get_or_create(
+            cafe=cafe,
+            ip_address="127.0.0.1",  # Fake IP
+            channel="video",
+            defaults={
+                "status": "active",
+                "location": "Sample Video",
+                "admin_name": "sample",
+                "admin_password": "sample",
+                "floor": Floor.objects.filter(cafe=cafe).first()  # Use any floor from this cafe
+            }
+        )
+    else:
+        selected_ids = json.loads(redis_client.get("selected_camera_ids") or "[]")
+        selected_camera = Camera.objects.filter(id__in=selected_ids, cafe_id=cafe_id, status="active").first()
+        if not selected_camera:
+            print(f"[ERROR] No active camera found for cafe {cafe_id}.")
+            return
+        stream_url = f"rtsp://{selected_camera.admin_name}:{selected_camera.admin_password}@{selected_camera.ip_address}/{selected_camera.channel}"
+
+    print(f"[INFO] Source Type: {source_type}")
+    print(f"[INFO] Stream URL: {stream_url}")
+
+
 
     cap = cv2.VideoCapture(stream_url)
+    if not cap.isOpened():
+        print(f"[ERROR] Failed to open stream: {stream_url}")
+        return
+
     frame_count = 0
     registered_chairs = {}
     person_memory = {}
@@ -178,7 +214,7 @@ def run_detection():
                     state['occupied'] = True
                     seat_obj, created = Seat.objects.get_or_create(
                         cafe_id=cafe_id,
-                        seat_id=chair_id,
+                        chair_index=chair_id,
                         defaults={
                             "x1": chair_box[0],
                             "y1": chair_box[1],

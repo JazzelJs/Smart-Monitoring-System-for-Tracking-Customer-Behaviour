@@ -7,21 +7,12 @@ export default function CustomerAnalytics() {
   const [customers, setCustomers] = useState([]);
 
   useEffect(() => {
-    api.get('/analytics/customers/').then(res => {
-      setStats(res.data);
-    });
-
-    api.get('/entry-events/?event_type=enter').then(res => {
-      setCustomers(res.data);
-    });
+    api.get('/analytics/customers/').then(res => setStats(res.data)).catch(err => console.error("Failed to fetch summary", err));;
+    api.get('/analytics/customers/list/').then(res => setCustomers(res.data)).catch(err => console.error("Failed to fetch summary", err));;
   }, []);
 
-  
-
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
-      <h1 className="text-4xl font-bold mb-6">Analytics</h1>
-
+    <div className="bg-gray-50 font-sans">
       {/* Tabs */}
       <AnalyticsTabs activeTab="Customers" />
 
@@ -50,14 +41,14 @@ export default function CustomerAnalytics() {
           <tbody>
             {customers.map((c, i) => (
               <tr key={i} className="border-b">
-                <td className="py-2">{c.customer?.face_id || 'Unknown'}</td>
-                <td>{c.customer?.first_visit || '-'}</td>
-                <td>{c.customer?.last_visit || '-'}</td>
-                <td>{c.customer?.visit_count || 0}</td>
-                <td>{c.customer?.average_stay || 0}m</td>
+                <td className="py-2">{c.face_id}</td>
+                <td>{new Date(c.first_visit).toLocaleString()}</td>
+                <td>{new Date(c.last_visit).toLocaleString()}</td>
+                <td>{c.visit_count}</td>
+                <td>{c.average_stay}m</td>
                 <td>
-                  <span className={`px-2 py-1 rounded text-white ${c.customer?.status === 'returning' ? 'bg-orange-500' : 'bg-black'}`}>
-                    {c.customer?.status || 'Unknown'}
+                  <span className={`px-2 py-1 rounded text-white ${c.status === 'returning' ? 'bg-orange-500' : 'bg-black'}`}>
+                    {c.status}
                   </span>
                 </td>
               </tr>
