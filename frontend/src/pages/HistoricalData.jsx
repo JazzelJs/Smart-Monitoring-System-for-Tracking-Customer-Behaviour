@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
 import api, { API_BASE_URL } from "../api";
-import { Download, Eye } from "lucide-react";
+import { Download } from "lucide-react"; // Only Download icon is used
 import ReportPreview from "../components/ReportPreview";
-import Navbar from "../components/Navbar"; // ✅ Import navbar
+import Navbar from "../components/Navbar";
 
 export default function HistoricalDataPage() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedReport, setSelectedReport] = useState(null); // For Report Preview Modal
 
   const currentDate = new Date();
   const [generateYear, setGenerateYear] = useState(currentDate.getFullYear());
@@ -36,26 +36,9 @@ export default function HistoricalDataPage() {
       });
   };
 
-  const downloadFile = async (fileUrl, filename) => {
-    try {
-      const response = await api.get(fileUrl, { responseType: 'blob' });
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to download PDF:", error);
-    }
-  };
-
   return (
     <div className="bg-gray-50 min-h-screen">
-      <Navbar /> {/* ✅ Navbar inserted here */}
+      <Navbar />
       <div className="p-8">
         <h1 className="text-4xl font-bold mb-6">Historical Data</h1>
         <p className="text-gray-500 mb-8">View and generate historical analytics reports</p>
@@ -79,36 +62,24 @@ export default function HistoricalDataPage() {
         {!loading && reports.length === 0 && <p className="text-gray-500">No reports found.</p>}
 
         <div className="grid grid-cols-1 gap-4">
-          {reports.map((report, idx) => {
-            const fullFileUrl = `${API_BASE_URL}${report.file_url}`;
-            const filename = `report_${report.year}_${report.month}.pdf`;
-            return (
-              <div key={idx} className="flex justify-between items-center p-4 border rounded-lg shadow-md bg-white">
-                <div className="flex flex-col">
-                  <span className="font-semibold text-lg">{`Report for ${report.year}-${report.month}`}</span>
-                  <span className="text-gray-500 text-sm">{new Date(report.created_at).toLocaleDateString()}</span>
-                </div>
-                <div className="flex gap-2">
-                  {report.file_url && (
-                    <button 
-                      className="border rounded px-4 py-2 text-sm hover:bg-gray-200"
-                      onClick={() => setSelectedReport({ year: report.year, month: report.month })}
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                  )}
-                  {report.file_url && (
-                    <button 
-                      className="border rounded px-4 py-2 text-sm hover:bg-gray-200"
-                      onClick={() => downloadFile(fullFileUrl, filename)}
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+          {reports.map((report, idx) => (
+            <div key={idx} className="flex justify-between items-center p-4 border rounded-lg shadow-md bg-white">
+              <div className="flex flex-col">
+                <span className="font-semibold text-lg">{`Report for ${report.year}-${report.month}`}</span>
+                <span className="text-gray-500 text-sm">{new Date(report.created_at).toLocaleDateString()}</span>
               </div>
-            );
-          })}
+              <div className="flex gap-2">
+                {report.file_url && (
+                  <button 
+                    className="border rounded px-4 py-2 text-sm hover:bg-gray-200"
+                    onClick={() => setSelectedReport({ year: report.year, month: report.month })}
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
 
         {selectedReport && (

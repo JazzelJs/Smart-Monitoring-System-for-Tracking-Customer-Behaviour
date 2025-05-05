@@ -47,7 +47,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework_simplejwt',
-     #'django_crontab',
     'corsheaders',
     'rest_framework',
     'backend_app'
@@ -176,8 +175,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # or hardcode temporarily
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # or hardcode
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  
 
 USE_TZ = True
 TIME_ZONE = 'Asia/Jakarta'  # Timezone now

@@ -79,19 +79,21 @@ class Seat(models.Model):
     y2 = models.IntegerField()
 
     class Meta:
-        unique_together = ('cafe', 'seat_id')
+        unique_together = ('cafe', 'seat_id')  # Ensure unique seat IDs per cafe
     def __str__(self):
         return f"Seat {self.seat_id} in {self.cafe.name}"
     
 
-
 class Floor(models.Model):
     cafe = models.ForeignKey(UserCafe, on_delete=models.CASCADE, related_name="floors")
     floor_number = models.IntegerField()
-    name = models.CharField(max_length=100, blank=True)
+    name = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
-        return f"Cafe {self.cafe} -- Floor {self.floor_number} - {self.cafe.name}"
+        return f"Cafe {self.cafe} -- Floor {self.floor_number} - {self.name or '(Unnamed)'}"
+
+    
+    
 
 
 class Camera(models.Model):

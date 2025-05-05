@@ -1,8 +1,13 @@
 from django.core.management.base import BaseCommand
 from datetime import datetime, timedelta
 from random import randint, choice
-from backend_app.models import UserCafe, Floor, Camera, Seat, Customer, EntryEvent, SeatDetection, PopularSeat, PeakHour
+from backend_app.models import (
+    UserCafe, Floor, Camera, Seat,
+    Customer, EntryEvent, SeatDetection,
+    PopularSeat, PeakHour
+)
 from django.utils import timezone
+import uuid
 
 class Command(BaseCommand):
     help = "Generate dummy data for March 2025 with realistic patterns for all cafes"
@@ -11,30 +16,54 @@ class Command(BaseCommand):
         local_tz = timezone.get_current_timezone()
 
         for cafe in UserCafe.objects.all():
+            # ✅ Skip if March data already exists
+            has_march_data = EntryEvent.objects.filter(
+                camera__cafe=cafe,
+                timestamp__year=2025,
+                timestamp__month=3
+            ).exists() or SeatDetection.objects.filter(
+                camera__cafe=cafe,
+                time_start__year=2025,
+                time_start__month=3
+            ).exists()
+
+            if has_march_data:
+                self.stdout.write(f"Skipping {cafe.name} — March data already exists.")
+                continue
+
             # Floors and Cameras
             for floor_num in range(1, 3):
-                floor, _ = Floor.objects.get_or_create(cafe=cafe, floor_number=floor_num)
+                floor, _ = Floor.objects.update_or_create(
+                    cafe=cafe,
+                    floor_number=floor_num,
+                    defaults={"name": f"Floor {floor_num}"}
+                )
+
                 for cam_num in range(1, 3):
-                    Camera.objects.get_or_create(
+                    Camera.objects.update_or_create(
                         cafe=cafe,
                         floor=floor,
                         channel=f"Channel {cam_num}",
-                        status="active",
-                        ip_address=f"192.168.{floor_num}.{cam_num}"
+                        defaults={
+                            "status": "active",
+                            "ip_address": f"192.168.{floor_num}.{cam_num}"
+                        }
                     )
 
-            # Seats
+            # Seats (by chair_index)
             for i in range(1, 11):
-                Seat.objects.get_or_create(
+                Seat.objects.update_or_create(
                     cafe=cafe,
                     chair_index=i,
-                    x1=randint(0, 100), y1=randint(0, 100),
-                    x2=randint(100, 200), y2=randint(100, 200)
+                    defaults={
+                        "x1": randint(0, 100),
+                        "y1": randint(0, 100),
+                        "x2": randint(100, 200),
+                        "y2": randint(100, 200)
+                    }
                 )
 
             # Customers
-            import uuid
-
             for _ in range(5):
                 status = choice(["new", "returning"])
                 first_visit = timezone.make_aware(datetime(2025, 2, randint(1, 28), 12, 0), local_tz)
@@ -48,7 +77,6 @@ class Command(BaseCommand):
                     status=status,
                     last_visit=timezone.now()
                 )
-
 
             # Entry Events (March 2025)
             camera = Camera.objects.filter(cafe=cafe).first()
@@ -79,9 +107,13 @@ class Command(BaseCommand):
 
             # Popular Seats
             for seat in Seat.objects.filter(cafe=cafe):
-                PopularSeat.objects.get_or_create(
-                    cafe=cafe, seat=seat,
-                    defaults={"usage_count": randint(5, 15), "avg_duration": randint(20, 60)}
+                PopularSeat.objects.update_or_create(
+                    cafe=cafe,
+                    seat=seat,
+                    defaults={
+                        "usage_count": randint(5, 15),
+                        "avg_duration": randint(20, 60)
+                    }
                 )
 
             # Peak Hour
@@ -89,7 +121,7 @@ class Command(BaseCommand):
             if detector:
                 peak_start_time = timezone.make_aware(datetime(2025, 3, 15, 12, 0), local_tz).time()
                 peak_end_time = timezone.make_aware(datetime(2025, 3, 15, 13, 0), local_tz).time()
-                PeakHour.objects.get_or_create(
+                PeakHour.objects.update_or_create(
                     cafe=cafe,
                     detector=detector,
                     defaults={
@@ -100,4 +132,6 @@ class Command(BaseCommand):
                     }
                 )
 
-        self.stdout.write(self.style.SUCCESS("Dummy data for March 2025 created for all cafes!"))
+            self.stdout.write(self.style.SUCCESS(f"Dummy data created for {cafe.name}"))
+
+        self.stdout.write(self.style.SUCCESS("✅ Done! Only new cafes without March data were seeded."))

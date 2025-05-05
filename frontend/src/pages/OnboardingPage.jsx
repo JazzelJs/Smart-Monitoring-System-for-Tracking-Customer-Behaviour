@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
-import { saveTokens } from "../utils/auth";
-import { getAccessToken } from "../utils/auth";
+import { saveTokens, getAccessToken } from "../utils/auth";
 
 function OnboardingPage() {
   const navigate = useNavigate();
@@ -11,6 +10,8 @@ function OnboardingPage() {
   const [cafeName, setCafeName] = useState("");
   const [location, setLocation] = useState("");
   const [capacity, setCapacity] = useState(0);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
   const [floors, setFloors] = useState([
     { name: "Ground Floor", cameras: [] }
   ]);
@@ -46,16 +47,19 @@ function OnboardingPage() {
 
   const handleSubmit = async () => {
     try {
-      const cafeRes = await api.post("/cafes/", {
-        name: cafeName,
-        location,
-        capacity
-      }, 
-      {
-        headers: {
-          Authorization: `Bearer ${getAccessToken}` // <-- pass your token here
-        }}
-    );
+      const cafeRes = await api.post(
+        "/cafes/",
+        {
+          name: cafeName,
+          location,
+          capacity
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${getAccessToken()}`
+          }
+        }
+      );
 
       const cafeId = cafeRes.data.id;
 
@@ -82,8 +86,7 @@ function OnboardingPage() {
         }
       }
 
-      alert("Cafe setup complete!");
-      navigate("/dashboard");
+      setShowSuccessModal(true); // ✅ Show modal after success
     } catch (err) {
       console.error("Setup error", err);
       alert("Something went wrong during setup.");
@@ -91,7 +94,7 @@ function OnboardingPage() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-6">
+    <div className="p-8 max-w-4xl mx-auto space-y-6 relative">
       {step === 1 && (
         <div className="space-y-4">
           <h2 className="text-xl font-bold">Step 1: Cafe Info</h2>
@@ -151,6 +154,22 @@ function OnboardingPage() {
           <div className="space-x-2">
             <button className="bg-gray-300 px-4 py-2 rounded" onClick={() => setStep(1)}>Back</button>
             <button className="bg-[#FF9500] text-white px-4 py-2 rounded" onClick={handleSubmit}>Finish</button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-sm w-full text-center space-y-4">
+            <h2 className="text-xl font-bold text-green-600">Success!</h2>
+            <p>Your cafe setup is complete.</p>
+            <button
+              className="bg-[#FF9500] text-white px-4 py-2 rounded hover:bg-orange-600"
+              onClick={() => navigate("/dashboard")}
+            >
+              Go to Dashboard
+            </button>
           </div>
         </div>
       )}

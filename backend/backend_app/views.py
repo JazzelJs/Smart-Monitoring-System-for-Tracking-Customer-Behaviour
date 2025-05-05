@@ -685,7 +685,6 @@ def monthly_report_summary(request, year, month):
     prev_start = make_aware(datetime(year, month, 1) - relativedelta(months=1))
     prev_end = make_aware(datetime(year, month, 1) - timedelta(seconds=1))
 
-
     # === TOTAL VISITORS ===
     total_visitors = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)).count()
 
@@ -716,76 +715,53 @@ def monthly_report_summary(request, year, month):
     avg_duration = durations.aggregate(avg=Avg('duration'))['avg']
     avg_duration_str = f"{avg_duration.seconds // 3600} H {((avg_duration.seconds // 60) % 60)} M" if avg_duration else "0 H 0 M"
 
-    # === DAILY TRAFFIC (THIS vs LAST MONTH) ===
-    cameras = Camera.objects.filter(cafe__in=cafes)
-
+    # === DAILY TRAFFIC ===
     def get_daily_traffic(start, end):
-        # Step 1: Query visitor counts grouped by day of week (1=Sunday, ..., 7=Saturday)
         data = EntryEvent.objects.filter(
-            camera__in=cameras,
-            event_type="enter",
-            timestamp__range=(start, end)
-        ).annotate(day=ExtractWeekDay('timestamp',  tzinfo=timezone.get_current_timezone())).values('day').annotate(count=Count('id'))
+            camera__in=cameras, event_type="enter", timestamp__range=(start, end)
+        ).annotate(day=ExtractWeekDay('timestamp', tzinfo=timezone.get_current_timezone())) \
+         .values('day').annotate(count=Count('id'))
 
-        # Step 2: Map Django day numbers to labels (Monday-Sunday order)
         day_map = {1: 'Sun', 2: 'Mon', 3: 'Tue', 4: 'Wed', 5: 'Thu', 6: 'Fri', 7: 'Sat'}
-
-        # Step 3: Ensure all days exist and ordered Mon-Sun
-        ordered_days = []
-        for i in range(2, 8):  # Monday (2) to Saturday (7)
-            count = next((item['count'] for item in data if item['day'] == i), 0)
-            ordered_days.append({'day': day_map[i], 'count': count})
-        # Add Sunday (1) at the end
-        sunday_count = next((item['count'] for item in data if item['day'] == 1), 0)
-        ordered_days.append({'day': 'Sun', 'count': sunday_count})
-
+        ordered_days = [{"day": day_map[i], "count": next((item['count'] for item in data if item['day'] == i), 0)} for i in range(2, 8)]
+        ordered_days.append({"day": "Sun", "count": next((item['count'] for item in data if item['day'] == 1), 0)})
         return ordered_days
 
     daily_this = list(get_daily_traffic(start, end))
     daily_last = list(get_daily_traffic(prev_start, prev_end))
 
-    # === HOURLY TRAFFIC (THIS vs LAST MONTH) ===
+    # === HOURLY TRAFFIC ===
     def get_hourly_traffic(start, end):
         raw_data = EntryEvent.objects.filter(
-            camera__in=cameras,
-            event_type="enter",
-            timestamp__range=(start, end)
-        ).annotate(hour=ExtractHour('timestamp',  tzinfo=timezone.get_current_timezone())).values('hour').annotate(count=Count('id')).order_by('hour')
+            camera__in=cameras, event_type="enter", timestamp__range=(start, end)
+        ).annotate(hour=ExtractHour('timestamp', tzinfo=timezone.get_current_timezone())) \
+         .values('hour').annotate(count=Count('id')).order_by('hour')
 
-        # Prepare a full list of 24 hours (0-23)
-        full_hours = []
         data_dict = {item['hour']: item['count'] for item in raw_data}
-
-        for hour in range(24):
-            label = f"{hour:02d}:00 - {hour+1:02d}:00"
-            count = data_dict.get(hour, 0)  # Default to 0 if no data for that hour
-            full_hours.append({'hour': label, 'count': count})
-
-        return full_hours
-
-
+        return [{"hour": f"{hour:02d}:00 - {hour+1:02d}:00", "count": data_dict.get(hour, 0)} for hour in range(24)]
 
     hourly_this = list(get_hourly_traffic(start, end))
     hourly_last = list(get_hourly_traffic(prev_start, prev_end))
 
-    # === MONTHLY TRENDS (LAST 6 MONTHS) ===
+    # === MONTHLY TRENDS ===
     trends_start = now - relativedelta(months=6)
     monthly_trends = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__gte=trends_start) \
         .annotate(month=TruncMonth('timestamp', tzinfo=timezone.get_current_timezone())) \
         .values('month').annotate(count=Count('id')).order_by('month')
 
-    # === MOST POPULAR SEAT (THIS vs LAST MONTH) ===
+    # === POPULAR SEAT ===
     def get_popular_seat(start, end):
-        result = SeatDetection.objects.filter(time_start__range=(start, end)) \
-            .values('seat__seat_id') \
-            .annotate(count=Count('id')) \
-            .order_by('-count') \
-            .first()
+        result = SeatDetection.objects.filter(camera__in=cameras, time_start__range=(start, end)) \
+            .values('seat__seat_id').annotate(count=Count('id')).order_by('-count').first()
         return result['seat__seat_id'] if result else None
-
 
     popular_this = get_popular_seat(start, end)
     popular_last = get_popular_seat(prev_start, prev_end)
+
+    # === SEAT USAGE RANKING (TOP 5) ===
+    seat_usage_ranking = durations.values('seat__seat_id').annotate(
+        usage_count=Count('id')
+    ).order_by('-usage_count')[:5]
 
     return Response({
         "total_visitors": total_visitors,
@@ -800,13 +776,16 @@ def monthly_report_summary(request, year, month):
             "this_month": hourly_this,
             "last_month": hourly_last
         },
-        "monthly_visitor_trends": monthly_trends,
+        "monthly_visitor_trends": list(monthly_trends),
         "popular_seat": {
             "this_month": f"Chair {popular_this}" if popular_this else "-",
             "last_month": f"Chair {popular_last}" if popular_last else "-"
         },
-        "customer_breakdown": breakdown
+        "customer_breakdown": breakdown,
+        "seat_usage_ranking": list(seat_usage_ranking),
+        "cafe_name": cafes.first().name if cafes.exists() else "N/A"
     })
+
 
 
 @api_view(['GET'])

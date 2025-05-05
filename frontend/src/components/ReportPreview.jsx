@@ -3,7 +3,8 @@ import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import api from "../api";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, Legend
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  LineChart, Line, Legend
 } from "recharts";
 
 export default function ReportPreview({ year, month, onClose }) {
@@ -16,57 +17,37 @@ export default function ReportPreview({ year, month, onClose }) {
     });
   }, [year, month]);
 
-  const monthName = (y, m) => new Date(y, m - 1).toLocaleString('default', { month: 'long' });
-  const currentMonthName = monthName(year, month);
-  const previousMonthName = monthName(year, month - 1);
-
   const downloadPDF = async () => {
     const input = reportRef.current;
-    if (!input) {
-      console.error("reportRef is null!");
-      return;
-    }
-
+    if (!input) return;
     const canvas = await html2canvas(input, { scale: 2 });
     const imgData = canvas.toDataURL("image/png");
-
     const pdf = new jsPDF("p", "mm", "a4");
     const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pdfWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    // === Header Info ===
-    const generatedDate = new Date().toLocaleDateString();
-    const cafeName = reportData?.cafe_name || "N/A";
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(16);
-    pdf.text(`${currentMonthName} ${year} Report`, 14, 18);
-
-    pdf.setFontSize(11);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`Café: ${cafeName}`, 14, 26);
-    pdf.text(`Generated on: ${generatedDate}`, 14, 32);
-
-    // === Image of Report Content ===
-    let position = 40;
-    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-    let heightLeft = imgHeight - (pdfHeight - position);
-
+    const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+    let heightLeft = imgHeight, position = 0;
+    pdf.addImage(imgData, "PNG", 0, position, pdfWidth, imgHeight);
+    heightLeft -= pdf.internal.pageSize.getHeight();
     while (heightLeft > 0) {
-      position -= pdfHeight;
+      position -= pdf.internal.pageSize.getHeight();
       pdf.addPage();
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
+      pdf.addImage(imgData, "PNG", 0, position, pdfWidth, imgHeight);
+      heightLeft -= pdf.internal.pageSize.getHeight();
     }
-
     pdf.save(`report_${year}_${month}_preview.pdf`);
   };
 
+  const monthName = (year, month) => {
+    const date = new Date(year, month - 1);
+    return date.toLocaleString('default', { month: 'long' });
+  };
+
+  const popularThis = reportData?.popular_seat?.this_month || "-";
+  const popularLast = reportData?.popular_seat?.last_month || "-";
+
   const mergeDailyTraffic = () => {
-    const thisMonth = reportData.daily_visitor_traffic.this_month;
-    const lastMonth = reportData.daily_visitor_traffic.last_month;
+    const thisMonth = reportData?.daily_visitor_traffic?.this_month || [];
+    const lastMonth = reportData?.daily_visitor_traffic?.last_month || [];
     return thisMonth.map((day, index) => ({
       day: day.day,
       this_month: day.count,
@@ -75,8 +56,8 @@ export default function ReportPreview({ year, month, onClose }) {
   };
 
   const mergeHourlyTraffic = () => {
-    const thisMonth = reportData.hourly_visitor_traffic.this_month;
-    const lastMonth = reportData.hourly_visitor_traffic.last_month;
+    const thisMonth = reportData?.hourly_visitor_traffic?.this_month || [];
+    const lastMonth = reportData?.hourly_visitor_traffic?.last_month || [];
     return thisMonth.map((hour, index) => ({
       hour: hour.hour,
       this_month: hour.count,
@@ -85,49 +66,46 @@ export default function ReportPreview({ year, month, onClose }) {
   };
 
   const mergeMonthlyTrends = () => {
-    const currentMonthShort = currentMonthName.slice(0, 3);
-    const previousMonthShort = previousMonthName.slice(0, 3);
-
-    return reportData.monthly_visitor_trends
-      .filter(item => {
-        const label = new Date(item.month).toLocaleString('default', { month: 'short' });
-        return label === currentMonthShort || label === previousMonthShort;
-      })
-      .map(item => {
-        const label = new Date(item.month).toLocaleString('default', { month: 'short' });
-        return {
-          month: label,
-          [label === currentMonthShort ? "this_month" : "last_month"]: item.count
-        };
-      });
+    return reportData?.monthly_visitor_trends?.map((item) => {
+      const date = new Date(item.month);
+      const mName = date.toLocaleString('default', { month: 'short' });
+      return { month: mName, value: item.count };
+    }) || [];
   };
 
   if (!reportData) return <p className="text-center">Loading report...</p>;
 
   return (
     <div>
-      <div className="flex justify-between mb-4">
-        <div>
-          <h2 className="text-3xl font-bold">{`${currentMonthName} ${year} Reports`}</h2>
-          <p className="text-gray-600">{`Café: ${reportData.cafe_name || "N/A"}`}</p>
-          <p className="text-gray-500">Generated on: {new Date().toLocaleDateString()}</p>
-        </div>
+      {/* Buttons (not included in PDF) */}
+      <div className="flex justify-end mb-4">
         <div className="flex gap-2">
           <button className="bg-red-500 text-white px-4 py-1 rounded" onClick={onClose}>Close</button>
           <button className="bg-blue-600 text-white px-4 py-1 rounded" onClick={downloadPDF}>Download PDF</button>
         </div>
       </div>
 
-      <div ref={reportRef} className="bg-gray-50 p-6 rounded-xl shadow space-y-6">
-        {/* Summary Cards */}
+      {/* PDF content starts here */}
+      <div ref={reportRef} className="bg-white p-6 rounded-xl shadow space-y-6">
+        {/* Header included in PDF */}
+        <div className="mb-6">
+          <h2 className="text-3xl font-bold">{`${monthName(year, month)} ${year} Reports`}</h2>
+          <p className="text-gray-600">Café: {reportData.cafe_name || "N/A"}</p>
+          <p className="text-gray-500">Generated on: {new Date().toLocaleDateString()}</p>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <SummaryCard title="Total Visitors" value={reportData.total_visitors} color="text-orange-500" />
           <SummaryCard title="Peak Hour" value={reportData.peak_hour} color="text-orange-500" />
-          <SummaryCard title="Returning Customers" value={`${reportData.returning_customers_percentage}%`} color="text-orange-500" />
+          <SummaryCard title="Returning Customers" value={`${reportData.returning_customers_percentage || 0}%`} color="text-orange-500" />
           <SummaryCard title="Avg Visit Duration" value={reportData.average_visit_duration} color="text-orange-500" />
         </div>
 
-        {/* Daily Traffic */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SummaryCard title="Popular Seat (This Month)" value={popularThis} color="text-orange-500" />
+          <SummaryCard title="Popular Seat (Last Month)" value={popularLast} color="text-gray-700" />
+        </div>
+
         <ChartBlock title="Daily Visitor Traffic">
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={mergeDailyTraffic()}>
@@ -135,13 +113,12 @@ export default function ReportPreview({ year, month, onClose }) {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="last_month" fill="#494548" name={previousMonthName} />
-              <Bar dataKey="this_month" fill="#FF9500" name={currentMonthName} />
+              <Bar dataKey="last_month" fill="#494548" name="Last Month" />
+              <Bar dataKey="this_month" fill="#FF9500" name="This Month" />
             </BarChart>
           </ResponsiveContainer>
         </ChartBlock>
 
-        {/* Hourly Traffic */}
         <ChartBlock title="Hourly Visitor Traffic">
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={mergeHourlyTraffic()}>
@@ -149,22 +126,19 @@ export default function ReportPreview({ year, month, onClose }) {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey="last_month" stroke="#494548" strokeWidth={2} name={previousMonthName} />
-              <Line type="monotone" dataKey="this_month" stroke="#FF9500" strokeWidth={2} name={currentMonthName} />
+              <Line type="monotone" dataKey="last_month" stroke="#494548" strokeWidth={2} name="Last Month" />
+              <Line type="monotone" dataKey="this_month" stroke="#FF9500" strokeWidth={2} name="This Month" />
             </LineChart>
           </ResponsiveContainer>
         </ChartBlock>
 
-        {/* Monthly Trends */}
         <ChartBlock title="Monthly Visitor Trends">
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={mergeMonthlyTrends()}>
               <XAxis dataKey="month" />
               <YAxis />
               <Tooltip />
-              <Legend />
-              <Bar dataKey="this_month" fill="#FF9500" name={currentMonthName} />
-              <Bar dataKey="last_month" fill="#494548" name={previousMonthName} />
+              <Bar dataKey="value" fill="#FF9500" />
             </BarChart>
           </ResponsiveContainer>
         </ChartBlock>

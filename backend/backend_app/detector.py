@@ -1,7 +1,4 @@
-# [MODIFIED] Based on your latest code, now with:
-# - Cafe and camera filtering
-# - Auto Seat registration with SeatDetection model
-
+# detector.py
 import threading
 import time
 import redis
@@ -117,7 +114,7 @@ def run_detection():
         if not selected_camera:
             print(f"[ERROR] No active camera found for cafe {cafe_id}.")
             return
-        stream_url = f"rtsp://{selected_camera.admin_name}:{selected_camera.admin_password}@{selected_camera.ip_address}/{selected_camera.channel}"
+        stream_url = f"rtsp://{selected_camera.admin_name}:{selected_camera.admin_password}@{selected_camera.ip_address}/{selected_camera.channel}stream2"
 
     print(f"[INFO] Source Type: {source_type}")
     print(f"[INFO] Stream URL: {stream_url}")
@@ -282,8 +279,6 @@ def run_detection():
                 cv2.rectangle(resized_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(resized_frame, "Person", (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-                
-
                 redis_client.set(f"chair_occupancy:cafe:{cafe_id}", json.dumps({
                     "chairs": {
                         str(chair_id): {
@@ -299,6 +294,7 @@ def run_detection():
 
         with shared_video.video_lock:
             shared_video.latest_frame = resized_frame.copy()
+            
     cap.release()
     print("[YOLO] Detection loop stopped cleanly.")
 
