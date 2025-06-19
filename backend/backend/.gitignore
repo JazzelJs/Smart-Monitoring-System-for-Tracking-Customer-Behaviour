@@ -1,0 +1,21 @@
+# === Django ===
+*.pyc
+__pycache__/
+db.sqlite3
+.env
+
+# === React ===
+node_modules/
+build/
+*.log
+
+# === Redis dumps ===
+dump.rdb
+
+# === Model files ===
+*.pt
+*.onnx
+
+# === OS/System ===
+.DS_Store
+.vscode/
