@@ -29,7 +29,6 @@ running = False
 redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 model = YOLO("D:/Kuliah/Tugas Akhir/TheTugasFinal/models/detection_models/best.pt")
 
-# Get from Redis
 
 
 
@@ -114,7 +113,7 @@ def run_detection():
         if not selected_camera:
             print(f"[ERROR] No active camera found for cafe {cafe_id}.")
             return
-        stream_url = f"rtsp://{selected_camera.admin_name}:{selected_camera.admin_password}@{selected_camera.ip_address}/{selected_camera.channel}stream2"
+        stream_url = f"rtsp://{selected_camera.admin_name}:{selected_camera.admin_password}@{selected_camera.ip_address}/{selected_camera.channel}stream2 "
 
     print(f"[INFO] Source Type: {source_type}")
     print(f"[INFO] Stream URL: {stream_url}")

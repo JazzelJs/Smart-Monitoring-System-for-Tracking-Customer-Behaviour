@@ -28,28 +28,24 @@ function App() {
           Detection Running...
         </div>
       )}
-
       <Routes>
         {/* Public routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-
         {/* Protected pages with standard layout */}
         <Route path="/dashboard" element={<ProtectedRoute><Layout><HomePage /></Layout></ProtectedRoute>} />
         <Route path="/onboarding" element={<ProtectedRoute><Layout><OnboardingPage /></Layout></ProtectedRoute>} />
         <Route path="/activity-log" element={<ProtectedRoute><Layout><ActivityLogPage /></Layout></ProtectedRoute>} />
         <Route path="/historical-data" element={<ProtectedRoute><Layout><HistoricalDataPage /></Layout></ProtectedRoute>} />
         <Route path="/settings/manage-camera" element={<ProtectedRoute><Layout><ManageCameras /></Layout></ProtectedRoute>} />
-
         {/* 🔁 Analytics Section with persistent video feed */}
         <Route path="/analytics" element={<ProtectedRoute><AnalyticsLayout /></ProtectedRoute>}>
           <Route path="seats" element={<AnalyticsPage />} />
           <Route path="peak-hour" element={<PeakHourAnalytics />} />
           <Route path="customer" element={<CustomerAnalytics />} />
         </Route>
-
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

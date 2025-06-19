@@ -188,37 +188,29 @@ class EntryEventListCreateView(generics.ListCreateAPIView):
 def seat_summary_analytics(request):
     user = request.user
     month_start = timezone.now().replace(day=1)
-
     cafes = UserCafe.objects.filter(user=user)
     cameras = Camera.objects.filter(cafe__in=cafes)
-
     detections = SeatDetection.objects.filter(
         camera__in=cameras,
         time_start__gte=month_start
     ).select_related('seat')
-
     # Most popular seat
     popular = detections.values("seat__chair_index").annotate(
         count=Count("id")
     ).order_by("-count").first()
-
     # Average duration
     avg_duration = detections.exclude(time_end__isnull=True).aggregate(
         avg=Avg(F("time_end") - F("time_start"))
     )["avg"]
-
     # Longest completed session
     annotated = detections.exclude(time_end__isnull=True).annotate(
         duration=ExpressionWrapper(F("time_end") - F("time_start"), output_field=DurationField())
     ).select_related('seat')
-
     longest = annotated.order_by("-duration").first()
-
     # Longest ongoing session
     ongoing = detections.filter(time_end__isnull=True).annotate(
         current_duration=ExpressionWrapper(timezone.now() - F("time_start"), output_field=DurationField())
     ).select_related('seat').order_by("-current_duration").first()
-
     return Response({
         "most_popular_seat": f"Chair {popular['seat__chair_index']}" if popular else "-",
         "average_duration": round(avg_duration.total_seconds() / 60) if avg_duration else 0,
@@ -231,33 +223,26 @@ def seat_summary_analytics(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def peak_hour_analytics(request):
-
     user = request.user
     cafes = UserCafe.objects.filter(user=user)
     cameras = Camera.objects.filter(cafe__in=cafes)
     end_time = timezone.now().astimezone(timezone.get_current_timezone())
     start_time = end_time - timedelta(days=7)
     entries = EntryEvent.objects.filter(camera__in=cameras,event_type="enter", timestamp__range=(start_time, end_time))
-
     # Peak hour
     hour_counts = defaultdict(int)
     day_counts = defaultdict(int)
     days = set()
-
     for e in entries:
         from django.utils.timezone import localtime
         hour = localtime(e.timestamp).replace(minute=0, second=0, microsecond=0)
         hour_counts[hour] += 1
-
         day_name = calendar.day_name[e.timestamp.weekday()]
         day_counts[day_name] += 1
-
         days.add(e.timestamp.date())
-
     peak_hour, hour_visitors = max(hour_counts.items(), key=lambda x: x[1], default=(None, 0))
     peak_day, day_visitors = max(day_counts.items(), key=lambda x: x[1], default=("None", 0))
     avg_visitors = entries.count() // len(days) if days else 0
-
     # 🔸 CURRENT OCCUPANCY
     try:
         cafe = UserCafe.objects.filter(user=user).first()
@@ -269,7 +254,6 @@ def peak_hour_analytics(request):
         occupancy_percent = round((occupied / total) * 100) if total else 0
     except:
         occupied, total, occupancy_percent = 0, 0, 0
-
     return Response({
         "peak_hour": f"{peak_hour.hour:02d}:00 - {peak_hour.hour+1:02d}:00" if peak_hour else "-",
         "peak_hour_visitors": hour_visitors,
@@ -356,21 +340,16 @@ def customer_analytics(request):
     cafes = UserCafe.objects.filter(user=user)
     now = timezone.now()
     month_start = now.replace(day=1)
-
     # Query customers for user's cafes
     customers = Customer.objects.filter(cafe__in=cafes)
-
     # Filter this month
     current_month_customers = customers.filter(first_visit__gte=month_start)
-
     # Metrics
     first_time_count = current_month_customers.filter(status='new').count()
     returning_count = current_month_customers.filter(status='returning').count()
     total_customers = current_month_customers.count()
-
     retention_rate = (returning_count / total_customers * 100) if total_customers else 0
     avg_visits = customers.aggregate(avg_visits=Avg('visit_count'))['avg_visits'] or 0
-
     return Response({
         "first_time_customers": first_time_count,
         "returning_customers": returning_count,
@@ -405,48 +384,35 @@ def activity_log(request):
     location_filter = request.GET.get('location')
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
-
     # Entry Events
     entry_logs = EntryEvent.objects.select_related('camera__floor').values(
-        'id', 'timestamp', 'event_type', 'camera__floor__name'
-    )
-
+        'id', 'timestamp', 'event_type', 'camera__floor__name')
     # Seat Detection Events
     seat_logs = SeatDetection.objects.select_related('camera__floor').values(
-        'id', 'time_start', 'time_end', 'camera__floor__name'
-    )
-
+        'id', 'time_start', 'time_end', 'camera__floor__name')
     logs = []
-
     for e in entry_logs:
         logs.append({
             'id': f"entry_{e['id']}",
             'timestamp': e['timestamp'],
             'event': 'Customer Arrives' if e['event_type'] == 'enter' else 'Customer Exits',
-            'location': e.get('camera__floor__name', 'Unknown'),
-        })
+            'location': e.get('camera__floor__name', 'Unknown'),})
 
     for s in seat_logs:
         logs.append({
             'id': f"seat_{s['id']}",
             'timestamp': s['time_start'],
             'event': 'Customer Sitting Down',
-            'location': s.get('camera__floor__name', 'Unknown'),
-        })
-
+            'location': s.get('camera__floor__name', 'Unknown'),})
     # Apply filters
     if event_filter:
         logs = [log for log in logs if log['event'] == event_filter]
-
     if location_filter:
         logs = [log for log in logs if log['location'] == location_filter]
-
     if start_date:
         logs = [log for log in logs if log['timestamp'].date() >= datetime.strptime(start_date, "%Y-%m-%d").date()]
-
     if end_date:
         logs = [log for log in logs if log['timestamp'].date() <= datetime.strptime(end_date, "%Y-%m-%d").date()]
-
     logs.sort(key=lambda x: x['timestamp'], reverse=True)
     return JsonResponse(logs[:5], safe=False)
 
@@ -516,20 +482,20 @@ def reset_chair_cache(request):
 
 
 
-@api_view(['GET'])
-def zone_popularity_view(request):
-    year = int(request.GET.get('year', datetime.now().year))
-    month = int(request.GET.get('month', datetime.now().month))
+# @api_view(['GET'])
+# def zone_popularity_view(request):
+#     year = int(request.GET.get('year', datetime.now().year))
+#     month = int(request.GET.get('month', datetime.now().month))
 
-    start = datetime(year, month, 1)
-    if month == 12:
-        end = datetime(year + 1, 1, 1)
-    else:
-        end = datetime(year, month + 1, 1)
+#     start = datetime(year, month, 1)
+#     if month == 12:
+#         end = datetime(year + 1, 1, 1)
+#     else:
+#         end = datetime(year, month + 1, 1)
 
-    detections = SeatDetection.objects.filter(time_start__gte=start, time_start__lt=end)
-    data = compute_zone_counts(detections)
-    return Response({"year": year, "month": month, "zones": data})
+#     detections = SeatDetection.objects.filter(time_start__gte=start, time_start__lt=end)
+#     data = compute_zone_counts(detections)
+#     return Response({"year": year, "month": month, "zones": data})
 
 # === CUSTOMER TRACKING UTILS ===
 from .models import Customer
@@ -560,7 +526,7 @@ def log_entry_event(track_id, face_id=None):
     EntryEvent.objects.create(
         event_type='enter',
         track_id=track_id,
-        customer=customer  # 🔥 Link customer here!
+        customer=customer  # Link customer here!
     )
 
 # =====================================================
@@ -609,30 +575,23 @@ def start_detection_view(request):
         cafe = UserCafe.objects.filter(user=user).first()
         if not cafe:
             return JsonResponse({"error": "No cafe linked to this user."}, status=400)
-
         redis_client.set("active_cafe_id", cafe.id)
-
         source_type = request.data.get("source_type", "camera")
         redis_client.set("source_type", source_type)
-
         if source_type == "sample":
             video_path = request.data.get("video_path", "")
             redis_client.set("sample_video_path", video_path)
-
         if source_type == "camera":
             selected_ids = request.data.get("selected_camera_ids", [])
             redis_client.set("selected_camera_ids", json.dumps(selected_ids))  # Optional: if needed later
-
         if redis_client.get("detection_status") == "running":
             return JsonResponse({"status": "already running"})
-
         started = start_detection()
         if started:
             redis_client.set("detection_status", "running")
             return JsonResponse({"status": "started"})
         else:
             return JsonResponse({"status": "failed to start"}, status=500)
-
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
@@ -652,7 +611,7 @@ def stop_detection_view(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def detection_status(request):
-    # Example: use Redis flag or global variable
+    
     status = redis_client.get("detection_status") or "stopped"
     return Response({"is_detecting": status == "running"})
 
@@ -675,46 +634,37 @@ from django.utils.timezone import make_aware
 def monthly_report_summary(request, year, month):
     user = request.user
     year, month = int(year), int(month)
-
     cafes = UserCafe.objects.filter(user=user)
     cameras = Camera.objects.filter(cafe__in=cafes)
     now = timezone.now()
-
     start = make_aware(datetime(year, month, 1))
     end = make_aware((datetime(year, month, 1) + relativedelta(months=1)) - timedelta(seconds=1))
     prev_start = make_aware(datetime(year, month, 1) - relativedelta(months=1))
     prev_end = make_aware(datetime(year, month, 1) - timedelta(seconds=1))
-
     # === TOTAL VISITORS ===
     total_visitors = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)).count()
-
     # === PEAK HOUR ===
     hourly_data = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__range=(start, end)) \
         .annotate(hour=TruncHour('timestamp', tzinfo=timezone.get_current_timezone())) \
         .values('hour').annotate(count=Count('id')).order_by('-count')
     peak = hourly_data.first()
     peak_hour = f"{peak['hour'].hour:02d}:00 - {peak['hour'].hour+1:02d}:00" if peak else "-"
-
     # === RETURNING CUSTOMERS ===
     customer_ids = EntryEvent.objects.filter(camera__in=cameras, timestamp__range=(start, end)) \
         .values_list('customer_id', flat=True).distinct()
-
     returning_customers = Customer.objects.filter(customer_id__in=customer_ids, status='returning').count()
     returning_percentage = (returning_customers / customer_ids.count()) * 100 if customer_ids else 0
-
     # === CUSTOMER BREAKDOWN ===
     first_time = Customer.objects.filter(customer_id__in=customer_ids, status='new').count()
     breakdown = {
         "first_time": first_time,
         "returning": returning_customers
     }
-
     # === AVERAGE DURATION ===
     detections = SeatDetection.objects.filter(camera__in=cameras, time_start__range=(start, end)).exclude(time_end__isnull=True)
     durations = detections.annotate(duration=ExpressionWrapper(F('time_end') - F('time_start'), output_field=DurationField()))
     avg_duration = durations.aggregate(avg=Avg('duration'))['avg']
     avg_duration_str = f"{avg_duration.seconds // 3600} H {((avg_duration.seconds // 60) % 60)} M" if avg_duration else "0 H 0 M"
-
     # === DAILY TRAFFIC ===
     def get_daily_traffic(start, end):
         data = EntryEvent.objects.filter(
@@ -726,10 +676,8 @@ def monthly_report_summary(request, year, month):
         ordered_days = [{"day": day_map[i], "count": next((item['count'] for item in data if item['day'] == i), 0)} for i in range(2, 8)]
         ordered_days.append({"day": "Sun", "count": next((item['count'] for item in data if item['day'] == 1), 0)})
         return ordered_days
-
     daily_this = list(get_daily_traffic(start, end))
     daily_last = list(get_daily_traffic(prev_start, prev_end))
-
     # === HOURLY TRAFFIC ===
     def get_hourly_traffic(start, end):
         raw_data = EntryEvent.objects.filter(
@@ -739,30 +687,24 @@ def monthly_report_summary(request, year, month):
 
         data_dict = {item['hour']: item['count'] for item in raw_data}
         return [{"hour": f"{hour:02d}:00 - {hour+1:02d}:00", "count": data_dict.get(hour, 0)} for hour in range(24)]
-
     hourly_this = list(get_hourly_traffic(start, end))
     hourly_last = list(get_hourly_traffic(prev_start, prev_end))
-
     # === MONTHLY TRENDS ===
     trends_start = now - relativedelta(months=6)
     monthly_trends = EntryEvent.objects.filter(camera__in=cameras, event_type="enter", timestamp__gte=trends_start) \
         .annotate(month=TruncMonth('timestamp', tzinfo=timezone.get_current_timezone())) \
         .values('month').annotate(count=Count('id')).order_by('month')
-
     # === POPULAR SEAT ===
     def get_popular_seat(start, end):
         result = SeatDetection.objects.filter(camera__in=cameras, time_start__range=(start, end)) \
             .values('seat__seat_id').annotate(count=Count('id')).order_by('-count').first()
         return result['seat__seat_id'] if result else None
-
     popular_this = get_popular_seat(start, end)
     popular_last = get_popular_seat(prev_start, prev_end)
-
     # === SEAT USAGE RANKING (TOP 5) ===
     seat_usage_ranking = durations.values('seat__seat_id').annotate(
         usage_count=Count('id')
     ).order_by('-usage_count')[:5]
-
     return Response({
         "total_visitors": total_visitors,
         "peak_hour": peak_hour,

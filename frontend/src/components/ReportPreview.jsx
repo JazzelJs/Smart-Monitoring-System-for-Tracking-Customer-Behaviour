@@ -146,7 +146,6 @@ export default function ReportPreview({ year, month, onClose }) {
     </div>
   );
 }
-
 function SummaryCard({ title, value, color }) {
   return (
     <div className="p-4 rounded-lg shadow bg-white">
@@ -155,7 +154,6 @@ function SummaryCard({ title, value, color }) {
     </div>
   );
 }
-
 function ChartBlock({ title, children }) {
   return (
     <div>

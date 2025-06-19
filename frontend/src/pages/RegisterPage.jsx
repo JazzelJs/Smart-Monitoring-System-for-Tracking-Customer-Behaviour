@@ -120,11 +120,11 @@ function RegisterPage() {
           Sign Up
         </button>
 
-        <p className="text-xs text-center text-[#494548] pt-2">
+        {/* <p className="text-xs text-center text-[#494548] pt-2">
           By clicking continue, you agree to our{' '}
           <span className="underline cursor-pointer">Terms of Service</span> and{' '}
           <span className="underline cursor-pointer">Privacy Policy</span>.
-        </p>
+        </p> */}
 
         <p className="text-sm text-center text-[#494548]">
           Already have an account?{' '}

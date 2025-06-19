@@ -17,7 +17,7 @@ detector = cv.FaceDetectorYN.create(face_detection_model, "", (320, 320), score_
 recognizer = cv.FaceRecognizerSF.create(face_recognition_model, "")
 
 recognition_threshold = 0.5
-detection_delay = 3
+detection_delay = 3 #seconds
 new_customers = {}
 
 # === Redis Embeddings ===
@@ -60,12 +60,12 @@ def recognize_face(face_feature):
 def save_new_customer(frame, coords):
     x, y, w, h = coords
     crop = frame[y:y+h, x:x+w]
-    if crop.size == 0: return
+    if crop.size == 0:
+        return
 
     count = redis_client.hlen("face_images")
     face_id = f"customer_{count + 1}"
 
-    store_face_image_in_redis(face_id, crop)
     resized = cv.resize(crop, (320, 320))
     detector.setInputSize((320, 320))
     faces = detector.detect(resized)
@@ -77,16 +77,26 @@ def save_new_customer(frame, coords):
     cafe_id = redis_client.get("active_cafe_id")
     assigned_cafe = UserCafe.objects.get(id=int(cafe_id)) if cafe_id else UserCafe.objects.first()
 
-
-    Customer.objects.create(
+    # === Fix: Prevent duplicate face_id using get_or_create ===
+    customer, created = Customer.objects.get_or_create(
         face_id=face_id,
-        cafe=assigned_cafe,
-        first_visit=timezone.now(),
-        visit_count=1,
-        last_visit=timezone.now(),
-        average_stay=0.0,
-        status='new'
+        defaults={
+            'cafe': assigned_cafe,
+            'first_visit': timezone.now(),
+            'visit_count': 1,
+            'last_visit': timezone.now(),
+            'average_stay': 0.0,
+            'status': 'new',
+        }
     )
+
+    if not created:
+        # Optional: update visit info if somehow retriggered
+        customer.visit_count += 1
+        customer.last_visit = timezone.now()
+        customer.save()
+
+
 
 def process_face_recognition(frame):
     results = []
